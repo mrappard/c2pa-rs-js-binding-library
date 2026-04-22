@@ -1,6 +1,7 @@
 # Node.js
 node_modules/
 dist/
+examples/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -19,3 +20,4 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+GEMINI.MD
