@@ -1,0 +1,23 @@
+{
+  "name": "c2pa-rs-javascript-library",
+  "version": "0.1.0",
+  "description": "A TypeScript library using Rust via WASM",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "pkg"
+  ],
+  "type": "module",
+  "scripts": {
+    "build:wasm": "wasm-pack build crate --target bundler --out-dir ../pkg",
+    "test:wasm": "wasm-pack build crate --target nodejs --out-dir ../pkg",
+    "build:ts": "tsc",
+    "build": "npm run build:wasm && npm run build:ts",
+    "test": "npm run test:wasm && vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.5"
+  }
+}

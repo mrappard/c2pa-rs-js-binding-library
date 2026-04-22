@@ -1,0 +1,21 @@
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+
+# Rust
+/crate/target/
+/crate/Cargo.lock
+
+# WebAssembly (wasm-pack)
+/pkg/
+
+# OS/IDEs
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
