@@ -47,18 +47,8 @@ test('verify multiple JPEG assets', async () => {
     const buffer = readFileSync(imagePath);
     const assetData = new Uint8Array(buffer);
 
-    try {
-      const outcome = await verifyAsset('image/jpeg', assetData, []);
-      expect(outcome.manifests.length).toBeGreaterThan(0);
-    } catch (e) {
-      const errorMsg = String(e);
-      if (errorMsg.includes('must fetch remote manifests') || errorMsg.includes('Remote manifest cannot be fetched')) {
-        console.warn(`Skipping remote manifest check for ${filename}: ${errorMsg}`);
-      } else if (errorMsg.includes('No C2PA manifest found')) {
-         console.warn(`No manifest found in ${filename}`);
-      } else {
-        throw e;
-      }
-    }
+    const outcome = await verifyAsset('image/jpeg', assetData, []);
+    expect(outcome.manifests.length).toBeGreaterThan(0);
+    console.log(`Successfully verified ${filename} with manifest ID: ${outcome.manifests[0].id}`);
   }
 });

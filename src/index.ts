@@ -1,6 +1,6 @@
-import * as wasm from '../pkg';
+import * as wasm from '../pkg/c2pa_rs_wasm.js';
 
-export { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient } from '../pkg';
+export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient, SigningAlg } from '../pkg/c2pa_rs_wasm.js';
 
 /**
  * Calls the Rust hello_world function and returns the result.
@@ -24,3 +24,20 @@ export async function verifyAsset(
 ): Promise<wasm.VerificationOutcome> {
   return wasm.verify_asset(format, asset, trustedCertificates);
 }
+
+/**
+ * Signs a C2PA asset.
+ */
+export async function signAsset(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
+}
+
+export { C2PASignResult } from '../pkg/c2pa_rs_wasm.js';
