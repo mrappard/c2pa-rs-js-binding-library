@@ -1,6 +1,6 @@
 # C2PA Rust JavaScript Library
 
-`c2pa-rs-javascript-library` is a TypeScript library for signing and verifying C2PA Content Credentials from JavaScript. It uses the official Rust `c2pa` implementation behind a WebAssembly boundary, giving JavaScript consumers a small API over the underlying Rust signing and verification logic.
+`c2pa-rs-javascript-library` is a TypeScript library for signing and verifying C2PA Content Credentials from JavaScript. For the current structured-text testing work, it uses the temporary Rust implementation in [`mrappard/c2pa-rs-text-support`](https://github.com/mrappard/c2pa-rs-text-support) behind a WebAssembly boundary, giving JavaScript consumers a small API over the underlying Rust signing and verification logic.
 
 ## What It Does
 
@@ -10,7 +10,7 @@ The library currently exposes:
 - `verifyAsset(...)` to inspect an asset and return verification state plus recognized manifest data
 - Type exports for supported formats, signing algorithms, manifests, thumbnails, ingredients, and verification results
 
-The Rust layer handles the C2PA-specific work, including manifest parsing, signing, and verification.
+The Rust layer handles the C2PA-specific work, including manifest parsing, signing, and verification. Once the structured-text changes are validated, this wording can be switched back to the upstream `c2pa-rs` project.
 
 ## Supported Formats
 

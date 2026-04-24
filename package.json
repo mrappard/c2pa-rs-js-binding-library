@@ -19,5 +19,8 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }

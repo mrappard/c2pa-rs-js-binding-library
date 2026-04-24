@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::Cursor};
 use wasm_bindgen::prelude::*;
-use c2pa::{Reader, ValidationState, settings::Settings};
+use c2pa::{Context, Reader, ValidationState, settings::Settings};
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, IntoStaticStr};
 use tsify::Tsify;
@@ -30,6 +30,9 @@ pub enum SupportedFormat {
     #[serde(rename = "image/x-adobe-dng")]
     #[strum(serialize = "image/x-adobe-dng")]
     Dng,
+    #[serde(rename = "jsonc")]
+    #[strum(serialize = "jsonc")]
+    Jsonc,
 }
 
 #[derive(Serialize, Tsify)]
@@ -147,7 +150,9 @@ pub async fn sign_asset(
     let manifest_definition_json: serde_json::Value = serde_wasm_bindgen::from_value(manifest_definition)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut builder = c2pa::Builder::from_json(&serde_json::to_string(&manifest_definition_json).map_err(|e| JsValue::from_str(&e.to_string()))?)
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
@@ -186,16 +191,18 @@ async fn internal_verify(
     asset: Vec<u8>,
     trusted_certificates: &[String],
 ) -> c2pa::Result<VerificationOutcome> {
-    let _ = Settings::from_toml("\n[verify]\nverify_trust = false\n");
-    let mut settings = Settings::default();
+    let mut settings = Settings::new().with_value("verify.verify_trust", false)?;
     settings.core.decode_identity_assertions = false;
     settings.trust.trust_anchors = if trusted_certificates.is_empty() {
         None
     } else {
         Some(trusted_certificates.join("\n"))
     };
-    
-    let reader = Reader::from_stream_async(format.into(), Cursor::new(asset)).await?;
+
+    let context = Context::new().with_settings(settings)?;
+    let reader = Reader::from_context(context)
+        .with_stream_async(format.into(), Cursor::new(asset))
+        .await?;
 
     let manifests = reader
         .manifests()

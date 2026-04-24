@@ -18,5 +18,5 @@ strum = { version = "0.27.1", features = ["derive"] }
 toml = "0.8"
 tsify = { version = "0.4.5", features = ["js"] }
 console_error_panic_hook = "0.1"
-c2pa = { version = "0.68.0", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema"] }
+c2pa = { package = "c2pa-rs-text-support", path = "../examples/c2pa-rs-text-support/sdk", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema", "http_reqwest"] }
 getrandom = { version = "0.2", features = ["js"] }
