@@ -14,7 +14,9 @@
     "test:wasm": "CC=/opt/homebrew/opt/llvm/bin/clang AR=/opt/homebrew/opt/llvm/bin/llvm-ar wasm-pack build crate --target nodejs --out-dir ../pkg",
     "build:ts": "tsc",
     "build": "npm run build:wasm && npm run build:ts",
-    "test": "npm run test:wasm && vitest run"
+    "test": "npm run test:wasm && vitest run",
+    "manifest:png": "node --input-type=module -e \"import('./script/outputManifestFromJpg.ts')\"",
+    "manifest:structured-text": "node --input-type=module -e \"import('./script/outputManifestFromStructuredText.ts')\""
   },
   "devDependencies": {
     "typescript": "^5.0.0",

@@ -33,6 +33,12 @@ pub enum SupportedFormat {
     #[serde(rename = "jsonc")]
     #[strum(serialize = "jsonc")]
     Jsonc,
+    #[serde(rename = "xml")]
+    #[strum(serialize = "xml")]
+    Xml,
+    #[serde(rename = "md")]
+    #[strum(serialize = "md")]
+    Md,
 }
 
 #[derive(Serialize, Tsify)]

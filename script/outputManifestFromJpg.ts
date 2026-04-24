@@ -47,18 +47,7 @@ async function run() {
 
     console.log('--- Found Manifests ---');
     console.log(JSON.stringify( mapToObject(outcome.manifestStore), null, 2));
-/*
-    console.log(JSON.stringify(outcome.manifests, (key, value) => {
-        // Truncate large binary data for readability
-        if (key === 'data' && value.type === 'Buffer') {
-            return `[Binary Data: ${value.data.length} bytes]`;
-        }
-        if (value instanceof Uint8Array) {
-             return `[Uint8Array: ${value.length} bytes]`;
-        }
-        return value;
-    }, 2));
-*/
+
   } catch (error) {
     console.error('Error verifying asset:', error);
   }

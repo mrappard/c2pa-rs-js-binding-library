@@ -6,6 +6,12 @@ export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThum
 const JSONC_FORMAT = 'jsonc' as wasm.SupportedFormat;
 const JSONC_MANIFEST_PREFIX = '// -----BEGIN C2PA MANIFEST-----';
 const JSONC_EMPTY_MANIFEST_BLOCK = `${JSONC_MANIFEST_PREFIX} data:application/c2pa;base64, -----END C2PA MANIFEST-----\n`;
+const XML_FORMAT = 'xml' as wasm.SupportedFormat;
+const XML_MANIFEST_PREFIX = '<!-- -----BEGIN C2PA MANIFEST-----';
+const XML_EMPTY_MANIFEST_BLOCK = `${XML_MANIFEST_PREFIX} data:application/c2pa;base64, -----END C2PA MANIFEST----- -->\n`;
+const MD_FORMAT = 'md' as wasm.SupportedFormat;
+const MD_MANIFEST_PREFIX = '<!-- -----BEGIN C2PA MANIFEST-----';
+const MD_EMPTY_MANIFEST_BLOCK = `${MD_MANIFEST_PREFIX} data:application/c2pa;base64, -----END C2PA MANIFEST----- -->\n`;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -41,6 +47,30 @@ function ensureJsoncManifestPlaceholder(asset: JsoncAssetInput): Uint8Array {
     ? text
     : `${JSONC_EMPTY_MANIFEST_BLOCK}${text}`;
   return textEncoder.encode(withPlaceholder);
+}
+
+function ensureXmlManifestPlaceholder(asset: JsoncAssetInput): Uint8Array {
+  const text = decodeJsoncAsset(asset);
+
+  if (text.includes(XML_MANIFEST_PREFIX)) {
+    return textEncoder.encode(text);
+  }
+
+  const withPlaceholder = text.startsWith('<?xml')
+    ? `${text}${text.endsWith('\n') ? '' : '\n'}${XML_EMPTY_MANIFEST_BLOCK}`
+    : `${XML_EMPTY_MANIFEST_BLOCK}${text}`;
+
+  return textEncoder.encode(withPlaceholder);
+}
+
+function ensureMarkdownManifestPlaceholder(asset: JsoncAssetInput): Uint8Array {
+  const text = decodeJsoncAsset(asset);
+
+  if (text.includes(MD_MANIFEST_PREFIX)) {
+    return textEncoder.encode(text);
+  }
+
+  return textEncoder.encode(`${MD_EMPTY_MANIFEST_BLOCK}${text}`);
 }
 
 /**
@@ -111,6 +141,58 @@ export async function verifyJsoncAsset(
 ): Promise<wasm.VerificationOutcome> {
   assertValidJsoncAsset(asset);
   return verifyAsset(JSONC_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
+}
+
+export async function signXmlAsset(
+  asset: JsoncAssetInput,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return signAsset(
+    XML_FORMAT,
+    ensureXmlManifestPlaceholder(asset),
+    manifestDefinition,
+    signcert,
+    pkey,
+    alg,
+    tsaUrl
+  );
+}
+
+export async function verifyXmlAsset(
+  asset: JsoncAssetInput,
+  trustedCertificates: string[]
+): Promise<wasm.VerificationOutcome> {
+  return verifyAsset(XML_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
+}
+
+export async function signMarkdownAsset(
+  asset: JsoncAssetInput,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return signAsset(
+    MD_FORMAT,
+    ensureMarkdownManifestPlaceholder(asset),
+    manifestDefinition,
+    signcert,
+    pkey,
+    alg,
+    tsaUrl
+  );
+}
+
+export async function verifyMarkdownAsset(
+  asset: JsoncAssetInput,
+  trustedCertificates: string[]
+): Promise<wasm.VerificationOutcome> {
+  return verifyAsset(MD_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
 }
 
 export { C2PASignResult } from '../pkg/c2pa_rs_wasm.js';
