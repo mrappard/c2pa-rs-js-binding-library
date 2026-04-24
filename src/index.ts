@@ -4,6 +4,7 @@ import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient, SigningAlg } from '../pkg/c2pa_rs_wasm.js';
 
 const JSONC_FORMAT = 'jsonc' as wasm.SupportedFormat;
+const CAWG_METADATA_LABEL = 'cawg.metadata';
 const JSONC_MANIFEST_PREFIX = '// -----BEGIN C2PA MANIFEST-----';
 const JSONC_EMPTY_MANIFEST_BLOCK = `${JSONC_MANIFEST_PREFIX} data:application/c2pa;base64, -----END C2PA MANIFEST-----\n`;
 const XML_FORMAT = 'xml' as wasm.SupportedFormat;
@@ -16,6 +17,41 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 export type JsoncAssetInput = string | Uint8Array;
+export type CawgMetadataContext = Record<string, string>;
+export type CawgMetadataAssertion = {
+  '@context': CawgMetadataContext;
+  [key: string]: unknown;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertValidCawgMetadata(metadata: unknown): asserts metadata is CawgMetadataAssertion {
+  if (!isPlainObject(metadata)) {
+    throw new Error('Invalid CAWG metadata: expected a JSON object');
+  }
+
+  const context = metadata['@context'];
+  if (!isPlainObject(context)) {
+    throw new Error('Invalid CAWG metadata: "@context" must be an object');
+  }
+
+  const contextEntries = Object.entries(context);
+  if (contextEntries.length === 0) {
+    throw new Error('Invalid CAWG metadata: "@context" must not be empty');
+  }
+
+  for (const [, uri] of contextEntries) {
+    if (typeof uri !== 'string' || uri.length === 0) {
+      throw new Error('Invalid CAWG metadata: all "@context" values must be non-empty strings');
+    }
+  }
+
+  if (Object.keys(metadata).every((key) => key === '@context')) {
+    throw new Error('Invalid CAWG metadata: include at least one metadata field besides "@context"');
+  }
+}
 
 function decodeJsoncAsset(asset: JsoncAssetInput): string {
   return typeof asset === 'string' ? asset : textDecoder.decode(asset);
@@ -116,6 +152,48 @@ export async function signAsset(
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
   return wasm.sign_asset(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
+}
+
+export function addCawgMetadataAssertion(
+  manifestDefinition: Record<string, unknown>,
+  metadata: CawgMetadataAssertion
+): Record<string, unknown> {
+  assertValidCawgMetadata(metadata);
+
+  const assertions = Array.isArray(manifestDefinition.assertions)
+    ? [...manifestDefinition.assertions]
+    : [];
+
+  assertions.push({
+    label: CAWG_METADATA_LABEL,
+    data: metadata,
+  });
+
+  return {
+    ...manifestDefinition,
+    assertions,
+  };
+}
+
+export async function signAssetWithCawgMetadata(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: Record<string, unknown>,
+  metadata: CawgMetadataAssertion,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return signAsset(
+    format,
+    asset,
+    addCawgMetadataAssertion(manifestDefinition, metadata),
+    signcert,
+    pkey,
+    alg,
+    tsaUrl
+  );
 }
 
 export function parseJsonc<T = unknown>(asset: JsoncAssetInput): T {
