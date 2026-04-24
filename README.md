@@ -112,3 +112,27 @@ console.log(result.manifest);
 
 - The TypeScript API is currently a thin wrapper over the generated WASM bindings.
 - The repository still contains some early scaffold artifacts in code and metadata, but the implemented direction is a C2PA signing and verification library rather than a generic Rust/WASM example.
+
+## npm Publish Checklist
+
+Before publishing:
+
+1. Run `npm test`
+2. Run `npm pack --dry-run`
+3. Confirm the tarball includes `dist/` plus the generated WASM files
+4. Bump the version in `package.json`
+5. Log into npm with `npm login`
+
+Publish:
+
+```bash
+npm publish
+```
+
+For a scoped public package:
+
+```bash
+npm publish --access public
+```
+
+The `prepack` script automatically rebuilds and stages the package into `dist/` before publish.

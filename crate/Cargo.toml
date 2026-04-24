@@ -2,6 +2,9 @@
 name = "c2pa-rs-wasm"
 version = "0.1.0"
 edition = "2021"
+description = "Rust WebAssembly bindings for the c2pa-rs JavaScript library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mrappard/c2pa-rs-javascript-library"
 
 [lib]
 crate-type = ["cdylib"]

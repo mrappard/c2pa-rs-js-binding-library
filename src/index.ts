@@ -1,5 +1,5 @@
 import * as wasm from '../pkg/c2pa_rs_wasm.js';
-import { parse, printParseErrorCode } from 'jsonc-parser';
+import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 
 export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient, SigningAlg } from '../pkg/c2pa_rs_wasm.js';
 
@@ -27,7 +27,7 @@ function encodeJsoncAsset(asset: JsoncAssetInput): Uint8Array {
 
 function assertValidJsoncAsset(asset: JsoncAssetInput): string {
   const text = decodeJsoncAsset(asset);
-  const errors = [];
+  const errors: ParseError[] = [];
 
   parse(text, errors, { allowTrailingComma: true, disallowComments: false });
 
