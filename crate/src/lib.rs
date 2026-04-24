@@ -192,6 +192,18 @@ pub async fn verify_asset(
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+#[wasm_bindgen]
+pub fn clean_asset(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+) -> Result<Vec<u8>, JsValue> {
+    match c2pa::jumbf_io::remove_jumbf_from_memory(format.into(), &asset) {
+        Ok(cleaned) => Ok(cleaned),
+        Err(c2pa::Error::JumbfNotFound) => Ok(asset),
+        Err(err) => Err(JsValue::from_str(&err.to_string())),
+    }
+}
+
 async fn internal_verify(
     format: SupportedFormat,
     asset: Vec<u8>,

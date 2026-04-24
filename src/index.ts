@@ -96,6 +96,13 @@ export async function verifyAsset(
   return wasm.verify_asset(format, asset, trustedCertificates);
 }
 
+export function cleanAsset(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array
+): Uint8Array {
+  return wasm.clean_asset(format, asset);
+}
+
 /**
  * Signs a C2PA asset.
  */
@@ -143,6 +150,10 @@ export async function verifyJsoncAsset(
   return verifyAsset(JSONC_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
 }
 
+export function cleanJsoncAsset(asset: JsoncAssetInput): Uint8Array {
+  return cleanAsset(JSONC_FORMAT, encodeJsoncAsset(asset));
+}
+
 export async function signXmlAsset(
   asset: JsoncAssetInput,
   manifestDefinition: any,
@@ -169,6 +180,10 @@ export async function verifyXmlAsset(
   return verifyAsset(XML_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
 }
 
+export function cleanXmlAsset(asset: JsoncAssetInput): Uint8Array {
+  return cleanAsset(XML_FORMAT, encodeJsoncAsset(asset));
+}
+
 export async function signMarkdownAsset(
   asset: JsoncAssetInput,
   manifestDefinition: any,
@@ -193,6 +208,10 @@ export async function verifyMarkdownAsset(
   trustedCertificates: string[]
 ): Promise<wasm.VerificationOutcome> {
   return verifyAsset(MD_FORMAT, encodeJsoncAsset(asset), trustedCertificates);
+}
+
+export function cleanMarkdownAsset(asset: JsoncAssetInput): Uint8Array {
+  return cleanAsset(MD_FORMAT, encodeJsoncAsset(asset));
 }
 
 export { C2PASignResult } from '../pkg/c2pa_rs_wasm.js';
