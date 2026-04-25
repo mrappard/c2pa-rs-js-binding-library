@@ -22,6 +22,32 @@ export type CawgMetadataAssertion = {
   '@context': CawgMetadataContext;
   [key: string]: unknown;
 };
+export type IdentityAssertionOptions = {
+  sigType: string;
+  reserveSize: number;
+  referencedAssertions?: string[];
+  roles?: string[];
+};
+export type PreparedIdentityAssertion = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  manifestDefinition: unknown;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  tsaUrl?: string;
+  options: IdentityAssertionOptions;
+  signerPayload: Record<string, unknown>;
+  signerPayloadCbor: Uint8Array;
+};
+export type IdentityAssertionRecord = {
+  label: string;
+  validated: boolean;
+  data: Record<string, unknown>;
+};
+export type IdentityAssertionVerificationOutcome = {
+  manifests: Record<string, IdentityAssertionRecord[]>;
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -132,6 +158,14 @@ export async function verifyAsset(
   return wasm.verify_asset(format, asset, trustedCertificates);
 }
 
+export async function verifyIdentityAssertions(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  trustedCertificates: string[]
+): Promise<IdentityAssertionVerificationOutcome> {
+  return wasm.verify_identity_assertions(format, asset, trustedCertificates) as Promise<IdentityAssertionVerificationOutcome>;
+}
+
 export function cleanAsset(
   format: wasm.SupportedFormat,
   asset: Uint8Array
@@ -152,6 +186,85 @@ export async function signAsset(
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
   return wasm.sign_asset(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
+}
+
+export async function prepareIdentityAssertion(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: Record<string, unknown>,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  options: IdentityAssertionOptions,
+  tsaUrl?: string
+): Promise<PreparedIdentityAssertion> {
+  return wasm.prepare_identity_assertion(
+    format,
+    asset,
+    manifestDefinition,
+    signcert,
+    pkey,
+    alg,
+    tsaUrl,
+    {
+      sigType: options.sigType,
+      reserveSize: options.reserveSize,
+      referencedAssertions: options.referencedAssertions ?? [],
+      roles: options.roles ?? [],
+    }
+  ) as Promise<PreparedIdentityAssertion>;
+}
+
+export async function finalizeIdentityAssertion(
+  prepared: PreparedIdentityAssertion,
+  signature: Uint8Array
+): Promise<wasm.C2PASignResult> {
+  return wasm.finalize_identity_assertion(prepared, signature);
+}
+
+export function signIdentityAssertionPayloadX509(
+  signerPayloadCbor: Uint8Array,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  tsaUrl?: string
+): Uint8Array {
+  return wasm.sign_identity_assertion_payload_x509(signerPayloadCbor, signcert, pkey, alg, tsaUrl);
+}
+
+export async function signAssetWithX509Identity(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: Record<string, unknown>,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  identitySigncert: Uint8Array,
+  identityPkey: Uint8Array,
+  identityAlg: wasm.SigningAlg,
+  options: IdentityAssertionOptions,
+  tsaUrl?: string,
+  identityTsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_with_x509_identity(
+    format,
+    asset,
+    manifestDefinition,
+    signcert,
+    pkey,
+    alg,
+    identitySigncert,
+    identityPkey,
+    identityAlg,
+    {
+      sigType: options.sigType,
+      reserveSize: options.reserveSize,
+      referencedAssertions: options.referencedAssertions ?? [],
+      roles: options.roles ?? [],
+    },
+    tsaUrl,
+    identityTsaUrl
+  );
 }
 
 export function addCawgMetadataAssertion(

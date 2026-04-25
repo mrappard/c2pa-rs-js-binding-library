@@ -17,9 +17,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
+c2pa_cbor = "0.77.2"
 strum = { version = "0.27.1", features = ["derive"] }
 toml = "0.8"
 tsify = { version = "0.4.5", features = ["js"] }
 console_error_panic_hook = "0.1"
 c2pa = { package = "c2pa-rs-text-support", path = "../examples/c2pa-rs-text-support/sdk", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema", "http_reqwest"] }
 getrandom = { version = "0.2", features = ["js"] }
+uuid = { version = "1", features = ["v4"] }
