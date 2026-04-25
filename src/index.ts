@@ -178,6 +178,23 @@ export function cleanAsset(
   return wasm.clean_asset(format, asset);
 }
 
+export async function signAssetWithThumbnail(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  thumbnailFormat: string,
+  thumbnailData: Uint8Array,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_with_thumbnail(
+    format, asset, manifestDefinition, signcert, pkey, alg,
+    thumbnailFormat, thumbnailData, tsaUrl
+  );
+}
+
 /**
  * Signs a C2PA asset.
  */

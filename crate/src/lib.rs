@@ -444,6 +444,53 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
     })
 }
 
+/// Signs a C2PA asset with an embedded claim thumbnail.
+///
+/// `thumbnail_format` must be a valid MIME type (e.g. `"image/jpeg"`, `"image/png"`).
+/// `thumbnail_data` is the raw bytes of the thumbnail image.
+#[wasm_bindgen]
+pub async fn sign_asset_with_thumbnail(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    thumbnail_format: String,
+    thumbnail_data: Vec<u8>,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let mut manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    // Ensure instance_id is set — the builder uses it as the thumbnail resource identifier.
+    stabilize_manifest_definition(&mut manifest_definition_json);
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder
+        .set_thumbnail(&thumbnail_format, &mut Cursor::new(thumbnail_data))
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset);
+    let mut dest = Cursor::new(Vec::new());
+
+    let manifest = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: dest.into_inner(),
+        manifest,
+    })
+}
+
 #[wasm_bindgen]
 pub async fn sign_asset(
     format: SupportedFormat,
