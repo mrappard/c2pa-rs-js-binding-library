@@ -25,3 +25,7 @@ console_error_panic_hook = "0.1"
 c2pa = { package = "c2pa-rs-text-support", path = "../examples/c2pa-rs-text-support/sdk", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema", "http_reqwest"] }
 getrandom = { version = "0.2", features = ["js"] }
 uuid = { version = "1", features = ["v4"] }
+coset = "0.4.0"
+ed25519-dalek = { version = "2.1.1", features = ["alloc"] }
+base64 = "0.22.1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }

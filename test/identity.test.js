@@ -7,6 +7,8 @@ import {
   signIdentityAssertionPayloadX509,
   signAsset,
   signAssetWithX509Identity,
+  signAssetWithIcaIdentity,
+  computeIcaIssuerDid,
   verifyAsset,
   verifyIdentityAssertions,
 } from '../src/index';
@@ -152,6 +154,101 @@ test('finalizeIdentityAssertion completes the two-call external signing flow', a
   expect(identityAssertions[0].validated).toBe(true);
   expect(identityAssertions[0].data.signer_payload.sig_type).toBe('cawg.x509.cose');
   expect(identityAssertions[0].data.signature_info.issuer).toBeDefined();
+});
+
+// ── ICA (Identity Claims Aggregation) tests ─────────────────────────────────
+
+// A fixed 32-byte Ed25519 seed used across all ICA tests.
+const ICA_PRIVATE_KEY = new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1));
+
+function makeIcaVerifiedIdentities() {
+  return [
+    {
+      type: 'cawg.social_media',
+      username: 'testuser',
+      uri: 'https://example-social.com/testuser',
+      verifiedAt: '2024-01-01T00:00:00Z',
+      provider: {
+        id: 'https://example-social.com',
+        name: 'Example Social',
+      },
+    },
+  ];
+}
+
+test('computeIcaIssuerDid derives a did:jwk from an Ed25519 private key', () => {
+  const did = computeIcaIssuerDid(ICA_PRIVATE_KEY);
+  expect(did).toMatch(/^did:jwk:/);
+  // Same key → same DID (deterministic)
+  expect(did).toBe(computeIcaIssuerDid(ICA_PRIVATE_KEY));
+});
+
+test('signAssetWithIcaIdentity signs a PNG with an ICA identity assertion', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+  const issuerDid = computeIcaIssuerDid(ICA_PRIVATE_KEY);
+
+  const result = await signAssetWithIcaIdentity(
+    'image/png',
+    assetData,
+    makeManifest('ChatGPT_Image.png'),
+    signcert,
+    pkey,
+    'es256',
+    issuerDid,
+    ICA_PRIVATE_KEY,
+    makeIcaVerifiedIdentities(),
+    {
+      sigType: 'cawg.identity_claims_aggregation',
+      reserveSize: 8192,
+      roles: ['cawg.creator'],
+    }
+  );
+
+  expect(result.signedAsset).toBeDefined();
+  expect(result.signedAsset.length).toBeGreaterThan(0);
+  expect(result.manifest).toBeDefined();
+
+  // The C2PA manifest must be well-formed and verifiable.
+  const outcome = await verifyAsset('image/png', result.signedAsset, [certPem]);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+});
+
+test('signAssetWithIcaIdentity: verifyIdentityAssertions returns the ICA assertion', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+  const issuerDid = computeIcaIssuerDid(ICA_PRIVATE_KEY);
+
+  const result = await signAssetWithIcaIdentity(
+    'image/png',
+    assetData,
+    makeManifest('ChatGPT_Image.png'),
+    signcert,
+    pkey,
+    'es256',
+    issuerDid,
+    ICA_PRIVATE_KEY,
+    makeIcaVerifiedIdentities(),
+    {
+      sigType: 'cawg.identity_claims_aggregation',
+      reserveSize: 8192,
+      roles: ['cawg.creator'],
+    }
+  );
+
+  const identityOutcome = await verifyIdentityAssertions('image/png', result.signedAsset, [certPem]);
+  const manifestIds = Object.keys(identityOutcome.manifests);
+  expect(manifestIds.length).toBeGreaterThan(0);
+
+  const assertions = identityOutcome.manifests[manifestIds[0]];
+  expect(assertions.length).toBeGreaterThan(0);
+
+  // For ICA assertions, `data` is the ICA credential summary (VC fields).
+  // The sig_type comes from the assertion label and the validated flag.
+  expect(assertions[0].validated).toBe(true);
+  expect(assertions[0].data.type).toContain('IdentityClaimsAggregationCredential');
+  expect(assertions[0].data.issuer).toBe(issuerDid);
+  expect(assertions[0].data.verifiedIdentities[0].type).toBe('cawg.social_media');
 });
 
 // ── assertion_salt tests ─────────────────────────────────────────────────────

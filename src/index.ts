@@ -28,6 +28,18 @@ export type IdentityAssertionOptions = {
   referencedAssertions?: string[];
   roles?: string[];
 };
+export type IcaVerifiedIdentity = {
+  type: string;
+  name?: string;
+  username?: string;
+  address?: string;
+  uri?: string;
+  verifiedAt: string;
+  provider: {
+    id: string;
+    name: string;
+  };
+};
 export type PreparedIdentityAssertion = {
   format: wasm.SupportedFormat;
   asset: Uint8Array;
@@ -257,6 +269,43 @@ export async function signAssetWithX509Identity(
     },
     tsaUrl,
     identityTsaUrl
+  );
+}
+
+export function computeIcaIssuerDid(privateKey: Uint8Array): string {
+  return wasm.compute_ica_issuer_did(privateKey);
+}
+
+export async function signAssetWithIcaIdentity(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: Record<string, unknown>,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  issuerDid: string,
+  issuerPrivateKey: Uint8Array,
+  verifiedIdentities: IcaVerifiedIdentity[],
+  options: IdentityAssertionOptions,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_with_ica_identity(
+    format,
+    asset,
+    manifestDefinition,
+    signcert,
+    pkey,
+    alg,
+    issuerDid,
+    issuerPrivateKey,
+    verifiedIdentities,
+    {
+      sigType: options.sigType,
+      reserveSize: options.reserveSize,
+      referencedAssertions: options.referencedAssertions ?? [],
+      roles: options.roles ?? [],
+    },
+    tsaUrl
   );
 }
 

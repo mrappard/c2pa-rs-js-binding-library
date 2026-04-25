@@ -1,0 +1,1927 @@
+Identity Assertion
+The C2PA technical specification allows actors in a workflow to make cryptographically signed assertions about the produced C2PA asset. This signature is issued by the vendor whose software or hardware was used to create the C2PA assertions and the C2PA claim, which is why it is called the C2PA claim generator.
+
+This specification describes a C2PA assertion referred to here as the identity assertion that can be added to a C2PA Manifest to enable a credential holder to prove control over a digital identity and to use that identity to document the named actor’s role(s) in the C2PA asset’s lifecycle.
+
+Version 1.2 DIF Ratified Specification 15 December 2025 · Version history
+
+This specification differs from the 1.1 version primarily in the addition of Section 8.2.4, “Trust model for X.509 certificates”.
+License
+This specification is subject to the W3C Patent Policy (2004).
+
+For sample or reference code included in the specification itself, that code is subject to the Apache 2.0 license, unless otherwise designated. In the case of any conflict or confusion within this specification repository between the W3C Patent Policy (2004) or other designated license, the terms of the W3C Patent Policy (2004) shall apply.
+
+These terms are inherited from the Decentralized Identity Foundation Project Charter.
+
+Contributing
+This section is non-normative.
+
+This specification has been approved by the Creator Assertions Working Group and has received final approval by DIF’s Steering Committee. If you wish to contribute to the development of a future version of this specification, please view the CAWG contributing guide.
+
+Foreword
+Attention is drawn to the possibility that some of the elements of this document may be the subject of patent rights. No party shall be held responsible for identifying any or all such patent rights.
+
+Any trade name used in this document is information given for the convenience of users and does not constitute an endorsement.
+
+This document was prepared by the Creator Assertions Working Group, a working group of the Decentralized Identity Foundation.
+
+THESE MATERIALS ARE PROVIDED “AS IS.” The Contributors and Licensees expressly disclaim any warranties (express, implied, or otherwise), including implied warranties of merchantability, non-infringement, fitness for a particular purpose, or title, related to the materials. The entire risk as to implementing or otherwise using the materials is assumed by the implementer and user. IN NO EVENT WILL THE CONTRIBUTORS OR LICENSEES BE LIABLE TO ANY OTHER PARTY FOR LOST PROFITS OR ANY FORM OF INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES OF ANY CHARACTER FROM ANY CAUSES OF ACTION OF ANY KIND WITH RESPECT TO THIS DELIVERABLE OR ITS GOVERNING AGREEMENT, WHETHER BASED ON BREACH OF CONTRACT, TORT (INCLUDING NEGLIGENCE), OR OTHERWISE, AND WHETHER OR NOT THE OTHER MEMBER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Table of contents
+1. Introduction
+1.1. Scope
+1.2. Conceptual overview
+1.3. Use cases and examples
+2. Normative references
+3. Terms and definitions
+3.1. Concepts adapted from C2PA technical specification
+3.2. Concepts adapted from W3C verifiable credentials specification
+3.3. Other concepts
+4. Standard terms
+5. Assertion definition
+5.1. Overview
+5.2. CBOR schema
+5.3. Labels
+6. Creating the identity assertion
+6.1. Presenting the signer_payload data structure for signature
+6.2. Creating the assertion
+6.3. Interaction with data hash assertion
+7. Validating the identity assertion
+7.1. Validation method
+7.2. Status codes
+8. Credentials, signatures, and validation methods
+8.1. Identity claims aggregation
+8.2. X.509 certificates and COSE signatures
+9. Trust model
+9.1. What does trust mean?
+9.2. Technical trust introduction
+9.3. Trust scenarios in identity assertion
+9.4. Threats to trust model
+10. User experience
+10.1. Approach
+10.2. Public review, feedback, and evolution
+Appendix A: Version history
+1. Introduction
+This section is non-normative.
+
+1.1. Scope
+This specification describes a C2PA assertion that allows a named actor to document their relationship to a C2PA asset produced by them or on their behalf independently from the C2PA claim generator, and to allow consumers of a C2PA asset to independently verify that the received asset was in fact produced by the named actor and has not been tampered with.
+
+This specification draws upon and extends existing work from the Coalition for Content Provenance and Authenticity (C2PA), which has developed a technical specification for providing content provenance and authenticity. It is designed to enable global, opt-in, adoption of digital provenance techniques through the creation of a rich ecosystem of digital provenance enabled applications for a wide range of individuals and organizations while meeting appropriate security requirements.
+
+The C2PA technical specification allows other standards bodies to define additional metadata that can be incorporated into a C2PA Manifest. These statements come in the form of a C2PA assertion.
+
+This specification describes a specific C2PA assertion that can be added to a C2PA Manifest to allow an actor to prove control over an digital identity and to bind that identity to a C2PA asset (and, at their option, one or more C2PA assertions) produced by them or on their behalf.
+
+This document references version 2.2 of the C2PA technical specification, but it is compatible with all prior versions of the specification. Where there is a meaningful difference between versions of the C2PA specification, those will be described here.
+1.2. Conceptual overview
+Each identity assertion instance allows exactly one credential holder to sign a data structure known as signer_payload, which among other things includes a list of C2PA assertions which will subsequently be included in a C2PA Manifest.
+
+The credential holder’s signature should generally be construed as reflective of the named actor’s authorization of or active participation in the production of the the C2PA asset in which it appears, as described by the specific C2PA assertions that are referenced in the identity assertion.
+
+Each identity assertion contains a signer_payload with hashlink references to one or more other C2PA assertions, known here as referenced assertions, and a signature from the credential holder over that payload, thus providing a non-repudiable, tamper-evident binding between the named actor and the list of referenced assertions.
+
+The signer_payload and corresponding signature from the credential holder binds this identity assertion to a specific C2PA asset and allows the credential holder to endorse or make additional statements about the named actor’s relationship to that C2PA asset.
+
+The identity assertion should be thought of as a trust signal that is independent from (and thus, in addition to) the trust signal provided by the C2PA claim generator itself.
+
+Example 1. Trust signal scope with one identity assertion
+The diagram that follows, with one C2PA Manifest containing one identity assertion, is intended to illustrate the most basic example of the two trust signals available and how they intersect:
+
+Single identity assertion trust example
+Figure 1. Overview of identity assertion
+In this notation, the small blue circles (A1, A2, etc.) are intended to represent any assertion other than an identity assertion or hard binding assertion. (As examples, any of these could represent an actions assertion, a metadata assertion, or a thumbnail assertion.) The black circle (HB) is used to represent the hard binding assertion, which is a required part of a valid C2PA Manifest. The yellow circle demonstrates the limit of identity assertion 1’s trust signal. The teal circle demonstrates the limit of the C2PA Manifest’s trust signal.
+
+The following diagram shows identity assertion 1 using the credential holder’s signature to seal:
+
+assertions A1 and A2,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in signer_payload.
+
+Trust model for identity assertion
+Figure 2. Identity assertion structure
+The following diagram shows the C2PA Manifest using the claim generator’s signature to seal:
+
+assertions A1, A2, and A3,
+
+identity assertion 1,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in the claim data structure.
+
+Trust model for C2PA Manifest
+Figure 3. C2PA Manifest structure
+The identity assertion may be repeated any number of times to convey information specific to distinct named actors.
+
+Example 2. Trust signal scope with two non-overlapping identity assertions
+The diagram that follows extends Example 1, “Trust signal scope with one identity assertion”, by showing how two identity assertions could be used to describe distinct assertions attested to by two distinct named actors:
+
+Two non-overlapping identity assertions example
+Figure 4. Two non-overlapping identity assertions
+In this example, identity assertion 1 is using its credential holder’s signature to seal:
+
+assertions A1 and A2,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in its signer_payload.
+
+The yellow circle demonstrates the limit of identity assertion 1’s trust signal.
+
+In this example, identity assertion 2 is using its credential holder’s signature to seal:
+
+assertions A3, A4, and A5,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in its signer_payload.
+
+The dark blue circle demonstrates the limit of identity assertion 2’s trust signal.
+
+Separately, the C2PA Manifest uses the claim generator’s signature to seal:
+
+assertions A1, A2, A3, A4, A5, and A6,
+
+identity assertion 1,
+
+identity assertion 2,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in the claim data structure.
+
+The teal circle demonstrates the limit of the C2PA Manifest’s trust signal.
+
+An identity assertion may reference one or more other identity assertions. As an example, this might be used to convey an organizational endorsement of an individual creator’s credential.
+
+Example 3. Trust signal scope with nested identity assertions
+The diagram that follows modifies Example 2, “Trust signal scope with two non-overlapping identity assertions”, by showing how one identity assertion could be used to attest to the validity of another identity assertion:
+
+Nested identity assertions example
+Figure 5. Nested identity assertions
+In this example, identity assertion 1 is using its credential holder’s signature to seal:
+
+assertions A1 and A2,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in its signer_payload.
+
+The yellow circle demonstrates the limit of identity assertion 1’s trust signal.
+
+In this example, identity assertion 2 is using its credential holder’s signature to seal:
+
+assertions A1, A2, A3, A4, and A5,
+
+identity assertion 1,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in its signer_payload.
+
+The dark blue circle demonstrates the limit of identity assertion 2’s trust signal, which completely overlaps the limit of identity assertion 1’s trust signal.
+
+Separately, the C2PA Manifest uses the claim generator’s signature to seal:
+
+assertions A1, A2, A3, A4, A5, and A6,
+
+identity assertion 1,
+
+identity assertion 2,
+
+the portion of the asset that does not include the C2PA Manifest Store (via HB), and
+
+any other information in the claim data structure.
+
+The teal circle demonstrates the limit of the C2PA Manifest’s trust signal.
+
+1.3. Use cases and examples
+The following is a non-exhaustive list of potential and general use cases for the identity assertion. Some of these are taken from, or built upon, the use cases developed within the Project Origin Alliance, the Content Authenticity Initiative (CAI), and the JPEG Trust frameworks. Each use case will be described using some generic personas to help make the flow clear.
+
+The identity assertion SHOULD NOT be construed to convey either attribution or ownership of a C2PA asset. Attribution, ownership, and rights transfers often take place outside of the digital realm. It is outside the scope of this specification to describe such transfers. It is possible that some other assertion could convey such information; such an assertion could be included in the set of referenced assertions.
+1.3.1. Enhancing clarity around provenance and edits for journalistic work
+A photojournalist Alice uses a Content Credentials-enabled capture device during a newsworthy event she is covering. Her capture device is linked to a digital wallet containing her professional credentials and records her identity in each captured asset. She then imports these assets into a Content Credentials-enabled editing application. Her identity is again associated with the edits that she has made. After editing, she sends her assets to her photo editor, Bob. Bob makes additional edits also using a Content Credentials-enabled application. A new identity assertion is recorded for these edits identifying Bob as the person responsible for those edits. The finalized asset is moved into the content management system of a news organization, which is also Content Credentials-enabled, before posting the asset to social media. Anyone viewing these assets can see the identity of Alice, Bob, and the news organization in a Content Credentials-enabled viewer.
+
+1.3.2. Enhance the evidentiary value of critical footage
+A human rights defender Jane manages to capture footage containing Content Credentials-enabled provenance of violence during a protest. Jane’s capture device is linked to a digital wallet containing her professional credentials and records her identity in each captured asset. Jane sends the footage to a human rights organization that verifies that the asset meets video-as-evidence criteria. The human rights organization determines that releasing Jane’s identity to the public could pose a safety or privacy risk, so they redact the identity assertion using a Content Credentials-enabled editing application before publishing the footage.
+
+1.3.3. Election integrity and protecting political campaigns from deepfakes
+Aarav is the director of social communications for a political candidate in an upcoming election. He feels concerned that in efforts to manipulate voters, bad actors will create deepfake videos to misrepresent the candidate. To protect the campaign, Aarav decides that all official communications will be created, produced, and published with Content Credentials-enabled tools. The identity assertion equips Aarav and his team with the ability to represent the campaign as the organizational author of the content that they publish. Aarav encourages voters to verify any digital campaign content to ensure that the material has Content Credentials that link the assets to the campaign.
+
+1.3.4. Brand protection in digital marketing
+An advertising agency representing a popular sneaker brand wants to ensure that consumers are only purchasing the shoes through official channels. They have found several fraudulent campaigns online claiming to offer the shoes at a discount. To address these scams, the agency decides to incorporate Content Credentials into their creative process, using the identity assertion to represent the designer responsible for the campaign. Before the campaign goes live, the agency redacts the designer’s name and publishes the assets with Content Credentials using the identity assertion to represent the sneaker brand. Now consumers can refer to Content Credentials to identify legitimate promotional campaigns from the sneaker brand.
+
+1.3.5. Attribution for digital creators
+One morning, Charlie, an up-and-coming digital artist, woke up to find that one of their designs went viral on social media. Charlie felt upset to see their art detached from their name. Charlie had spent months working on their artwork and was disappointed not to receive credit or compensation for their work. Moving forward, Charlie decides to use the identity assertion to link their name, social media, and copyright information to the art they create. Now, when Charlie posts their content to social media platforms that display Content Credentials, viewers can easily link the artwork back to Charlie.
+
+Copyright is not directly described by the identity assertion but an identity assertion can reference other assertions, such as the CAWG metadata assertion, which can contain such information using common vocabularies such as the Dublin Core metadata vocabulary.
+1.3.6. Audio sampling and artistic collaboration
+Eve is a musician with a talent for releasing songs featuring clever lyrics and catchy beats. Ever since Eve’s music gained traction on audio streaming apps, artists have reached out asking permission to sample her beats. Eve views these collaborations as an opportunity to help new listeners discover her music, so it is important to her that the samples are traceable back to her. She decides to begin recording her songs using a Content Credentials-enabled device linked to a digital wallet containing her identity credentials and her profile on music streaming applications. Eve also asserts her standard terms and conditions to facilitate the permission process using (forthcoming) JPEG Trust assertions. Now, when other artists release songs that sample Eve’s tunes, she can demonstrate her contribution to the final work.
+
+2. Normative references
+C2PA technical specification, version 2.2
+
+Verifiable credentials data model, version 1.1
+
+Verifiable credentials data model, version 2.0
+
+W3C decentralized identifiers (DIDs), version 1.0
+
+Internet X.509 public key infrastructure certificate (RFC 5280)
+
+3. Terms and definitions
+3.1. Concepts adapted from C2PA technical specification
+The following definitions are adapted from the glossary provided in the C2PA technical specification. This specification uses the prefix “C2PA” to denote data structures incorporated from that specification.
+
+3.1.1. Actor
+A human or non-human (hardware or software) that is participating in the C2PA ecosystem. For example: a camera (capture device), image editing software, cloud service, or the person using such tools.
+
+An organization or group of actors may also be considered an actor in the C2PA ecosystem.
+3.1.2. C2PA asset
+A file or stream of data containing digital content, asset metadata, and a C2PA Manifest.
+
+For the purposes of this definition, we will extend the typical definition of “file” to include cloud-native and dynamically-generated data.
+
+The definition of “C2PA asset” in this specification differs from the definition of “asset” given in the C2PA technical specification. A “C2PA asset” as defined in this specification MUST contain a C2PA Manifest.
+3.1.3. C2PA claim
+A digitally signed and tamper-evident data structure that references a set of assertions by one or more actors, concerning a C2PA asset, and the information necessary to represent the content binding. If any C2PA assertions were redacted, then a declaration to that effect is included. This data is a part of the C2PA Manifest.
+
+See Section 10, “Claims,” of the C2PA technical specification.
+
+3.1.4. C2PA claim generator
+The non-human (hardware or software) actor that generates the C2PA claim about a C2PA asset as well as the claim signature, thus leading to the C2PA asset's associated C2PA Manifest.
+
+3.1.5. C2PA assertion
+A data structure which represents a statement asserted by an actor concerning the C2PA asset. This data is a part of the C2PA Manifest.
+
+See Section 6, “Assertions,” of the C2PA technical specification.
+
+3.1.6. C2PA Manifest
+The set of information about the provenance of a C2PA asset based on the combination of one or more C2PA assertions (including content bindings), a single C2PA claim, and a claim signature. A C2PA Manifest is part of a C2PA Manifest Store.
+
+A C2PA Manifest can reference other C2PA Manifests.
+See Section 11, “Manifests,” of the C2PA technical specification.
+
+3.1.7. C2PA Manifest Consumer
+An actor who consumes a C2PA asset with an associated C2PA Manifest for the purpose of obtaining the provenance data from the C2PA Manifest.
+
+3.1.8. C2PA Manifest Store
+A collection of C2PA Manifests, which collectively describe the provenance history of a single C2PA asset.
+
+See Section 11.1.4.2, “Manifest Store,” of the C2PA technical specification.
+
+3.1.9. Content binding
+Information that associates digital content to a specific C2PA Manifest associated with a specific C2PA asset, either as a hard binding or a soft binding.
+
+Content bindings are described in Section 9, “Binding to content,” of the C2PA technical specification.
+
+3.1.10. Hard binding
+One or more cryptographic hashes that uniquely identifies either the entire C2PA asset or a portion thereof.
+
+Hard bindings are described in Section 9.2, “Hard bindings,” of the C2PA technical specification.
+
+3.2. Concepts adapted from W3C verifiable credentials specification
+The following definitions are adapted from the W3C verifiable credentials data model specification, version 1.1. This specification uses the prefix “W3C” to denote concepts incorporated from that specification.
+
+3.2.1. W3C verifiable credential
+A tamper-evident credential that has authorship that can be cryptographically verified.
+
+3.2.2. W3C decentralized identifier
+A portable URL-based identifier, also known as a DID, associated with an entity. These identifiers are most often used in a W3C verifiable credential and are associated with credential subjects such that a W3C verifiable credential itself can be easily ported from one repository to another without the need to reissue the W3C verifiable credential. An example of a DID is did:example:123456abcdef.
+
+3.2.3. W3C decentralized identifier document
+Also referred to as a DID document, this is a document that is accessible using a verifiable data registry and contains information related to a specific W3C decentralized identifier, such as the associated repository and public key information.
+
+3.3. Other concepts
+3.3.1. Credential holder
+The actor that has control (specifically signature authority) over a verifiable identifier that describes a specific named actor.
+
+3.3.2. Credential revocation
+An action signifying that a digital credential can no longer be considered as valid. This is typically indicated by an action on the part of the credential issuer stating that they can no longer attest to the validity of the information in the credential or an action on the part of the credential holder stating that the public/private key pair associated with the credential is no longer valid.
+
+Adapted from Trust Over IP’s definition of revocation.
+
+3.3.3. Identity claims aggregator
+An actor that collects identity claims (attestations) regarding a named actor from various identity providers and can replay those identity claims into identity assertions on behalf of the named actor. This actor MAY be the same as the identity assertion generator.
+
+3.3.4. Identity assertion
+A C2PA assertion that allows a credential holder to prove control over an digital identity and bind the identity to a set of C2PA assertions produced by them or on their behalf.
+
+3.3.5. Identity assertion consumer
+A C2PA Manifest Consumer who also consumes and interprets the content of any identity assertions contained within the C2PA Manifest.
+
+This role can also be thought of as a relying party or verifier as defined in specifications such as the W3C verifiable credentials data model.
+3.3.6. Identity assertion generator
+The non-human (hardware or software) actor that is responsible for generating the identity assertion. This MAY be the same actor as the C2PA claim generator.
+
+3.3.7. Identity provider
+An actor that is attesting to an identity of the named actor as understood in the context of the identity provider. This actor MAY be the identity assertion generator, a third party contacted by the identity assertion generator, or the issuer of an identity credential that is used by the identity assertion generator.
+
+3.3.8. Named actor
+The actor whose relationship to a C2PA asset is documented by an identity assertion. This may also be referred to as a credential subject when identified by the subject field of a verifiable identifier.
+
+A named actor may be any form of actor, including an individual human, an organization of humans, or a non-human (software or hardware device).
+The named actor is not necessarily the same actor as the credential holder, though there is an implied trust relationship between the two actors.
+3.3.9. Natural language string
+A sequence of UTF-8 characters that is intended to be displayed to a human user. When contained within a JSON or CBOR data structure, this may be either:
+
+a single string object, in which case this string is to be displayed as-is to users, regardless of their expressed language preference, or
+
+a JSON or CBOR map, in which case the contents should be interpreted as described in §10.1, “Language and base direction,” of the W3C verifiable credential data model specification.
+
+The string MUST resolve to a non-empty sequence of UTF-8 characters for all supported languages.
+
+3.3.10. Placeholder assertion
+A temporary C2PA assertion that is created during C2PA claim generation which reserves space for the eventual content of the identity assertion. A placeholder assertion MUST be used when the final file layout of the C2PA asset is required for the hard binding assertion, as described in Section 6.3, “Interaction with data hash assertion”.
+
+3.3.11. Referenced assertions
+The set of C2PA assertions that are referenced by an identity assertion and thus bound to (i.e. authorized by or created by) the credential holder named in the identity assertion.
+
+3.3.12. Trust
+In the context of an identity assertion, we define trust as meeting or exceeding the minimum level of confidence an identity assertion consumer requires over assertions made about the identity of the named actor and the named actor’s true intention regarding their attestations via content included in and referenced by the identity assertion.
+
+3.3.13. Trust list
+A list of actors, published by an authoritative source that are trusted in a specific context.
+
+Adapted from Trust Over IP’s definition of trust list.
+
+A trust list can be considered a simplified form of a trust registry.
+
+3.3.14. Verifiable identifier
+Any credential for which an independent system is able to associate, discover, and verify the cryptographic keys associated with that credential.
+
+4. Standard terms
+The key words “MUST,” “MUST NOT,” “REQUIRED,” “SHALL,” “SHALL NOT,” “SHOULD,” “SHOULD NOT,” “RECOMMENDED,” “NOT RECOMMENDED,” “MAY,” and “OPTIONAL” in this document are to be interpreted as described in BCP 14, RFC 2119, and RFC 8174 when they appear in any casing (upper, lower, or mixed).
+
+5. Assertion definition
+5.1. Overview
+This specification defines a C2PA assertion known as an identity assertion which MAY be used to bind one named actor to a set of referenced assertions and other related data, known overall as the signer payload. This binding SHOULD generally be construed as authorization of or participation in the creation of the statements described by those assertions and corresponding portions of the C2PA asset in which they appear.
+
+The identity assertion contains the following data fields:
+
+signer_payload contains the set of data to be signed by this credential holder
+
+signature contains the raw byte stream of the credential holder’s signature
+
+pad1 and pad2 are byte strings filled with binary 0x00 values used to fill space
+
+The signer_payload field is a structure of type signer-payload-map which is signed by the credential holder. It contains the following fields:
+
+referenced_assertions (required) is an array of hashed-uri-map structures with one entry for every referenced assertion chosen by the credential holder. It is subject to several requirements as described in Section 5.1.1, “Referenced assertions requirements”.
+
+sig_type (required) is a string identifying the data type of the signature. Valid credential types and the corresponding signature data structures and signer_payload.sig_type values are defined in Section 8, “Credentials, signatures, and validation methods”.
+
+role (optional) contains one or more descriptions of the named actor’s relationship(s) to the C2PA asset. Possible role values are described in Section 5.1.2, “Named actor roles”.
+
+expected_partial_claim (optional), if present, describes the content of the expected C2PA claim, in which the identity assertion appears. It can be used to prevent the introduction or removal of C2PA assertions (other than the referenced assertions) that could create unintended or unexpected semantics for the overall C2PA Manifest. The method for calculating this field is described in Section 6.1.1, “Calculating the expected_partial_claim field”.
+
+expected_claim_generator (optional), if present, describes the X.509 certificate of the expected C2PA claim generator. It can be used to avoid creating an unwanted association between the named actor and an unexpected or undesired C2PA claim generator. The method for calculating this field is described in Section 6.1.2, “Calculating the expected_claim_generator field”.
+
+expected_countersigners (optional), if present, describes the content of other identity assertion in the same C2PA Manifest. The method for calculating this field is described in Section 6.1.3, “Calculating the expected_countersigners field”.
+
+The identity assertion SHALL have a label of cawg.identity.
+
+Multiple identity assertions may be used in the same C2PA Manifest to describe the distinct roles of multiple actors in creating a single C2PA asset. This is illustrated in the multi-author example from the conceptual overview. If this occurs, these assertions SHALL be given unique labels as described by Section 6.4, “Multiple instances,” of the C2PA technical specification.
+
+5.1.1. Referenced assertions requirements
+The list of referenced assertions contained in signer_payload.referenced_assertions is subject to the following requirements:
+
+For each assertion listed, an assertion with the same url, alg, and hash values MUST also be listed in the created_assertions, gathered_assertions, or assertions field of either:
+
+the same C2PA claim in which the identity assertion appears, or
+
+any C2PA claim which can be found by recursively tracing the ingredient manifests (as described by Section 18.15, “Ingredient manifests,” of the C2PA technical specification) of the C2PA claim in which the identity assertion appears.
+
+The assertions field appears only in version 1.x of the C2PA technical specification. It was replaced with created_assertions and gathered_assertions in version 2.0 of the C2PA technical specification.
+The list MUST NOT reference any assertion more than once.
+
+The list MUST include the hard binding assertion as described in Section 9.2, “Hard bindings,” of the C2PA technical specification. This binding MUST be chosen using the approach described in the opening paragraph of Section 15.12, “Validate the asset’s content,” of the C2PA technical specification. This list MUST NOT include a reference to any other hard binding assertion.
+
+The list MAY reference other identity assertions, provided that no cycle of references among identity assertions is created.
+
+The requirement that the hash value for a referenced assertion be known prior to presenting signer_payload for signature implies that an identity assertion MUST NOT refer to itself.
+5.1.2. Named actor roles
+The credential holder MAY choose to describe one or more relationships of the named actor to the C2PA asset by adding a role field to signer_payload.
+
+If present, the value for role MUST be a non-empty CBOR array of non-empty text strings. It is recommended that the CBOR text strings be chosen from the following values and that any user experience that presents the content of an identity assertion be prepared to describe these roles in the same human language as the surrounding interface:
+
+Value	Meaning
+cawg.creator
+
+The named actor is a primary creator/author of this C2PA asset.
+
+cawg.contributor
+
+The named actor is a secondary creator/author of this C2PA asset.
+
+cawg.editor
+
+The named actor is an editor of this C2PA asset.
+
+cawg.producer
+
+The named actor is a producer of this C2PA asset.
+
+cawg.publisher
+
+The named actor is a publisher of this C2PA asset.
+
+cawg.sponsor
+
+The named actor has supported or sponsored the creation of this C2PA asset.
+
+cawg.translator
+
+The named actor has adapted of this C2PA asset from a similar work in another language.
+
+Other CBOR text string values MAY be used for role, subject to the restrictions described in Section 5.3, “Labels”.
+
+5.2. CBOR schema
+The schema for this type is defined by the identity rule in the following CDDL definition:
+
+identity = {
+  "signer_payload": $signer-payload-map, ; content to be signed by credential holder
+  "signature": bstr, ; byte string of the signature
+  "pad1": bstr, ; byte string filled with binary `0x00` values used for filling up space
+  ? "pad2": bstr, ; optional byte string filled with binary `0x00` values used for filling up space
+}
+
+signer-payload-map = {
+  "referenced_assertions": [1* $hashed-uri-map],
+  "sig_type": tstr .size (1..max-tstr-length), ; a string identifying the data type of the signature field
+  ? "role": [1* (tstr .size (1..max-tstr-length))], ; one or more strings defining the named actor’s relationship(s) to this C2PA asset
+  ? "expected_partial_claim": $hash-map, ; hash of expected partial claim
+  ? "expected_claim_generator": $hash-map, ; hash of expected claim signer credential
+  ? "expected_countersigners": [1* $expected-countersigner-map], ; array of expected other identity assertion descriptions
+}
+
+hash-map = {
+  "alg": tstr .size (1..max-tstr-length), ; a string identifying the cryptographic hash algorithm used to compute this hash, taken from the C2PA hash algorithm identifier list
+  "hash": bstr, ;  byte string containing the hash value
+}
+
+expected-countersigner-map = {
+  "partial_signer_payload": $signer-payload-map ; signer_payload map from other identity assertion minus any `expected_countersigner` field
+  ? "expected_credentials": $hash-map ; expected identity assertion credentials
+}
+Future minor version updates (1.1, 1.2, etc.) to this specification MAY add new fields to the signer-payload-map description, provided that such new data members are optional and there is a well-specified default meaning that is compatible with the 1.0 version of this specification. Such updates to the specification SHOULD continue to use the cawg.identity assertion label.
+Possible values for the signer_payload.sig_type field and the corresponding interpretations of the signature field are described in Section 8, “Credentials, signatures, and validation methods”.
+
+The hashed-uri-map rule is defined in Section 8.3.1, “Hashed URIs,” of the C2PA technical specification.
+
+Possible values for the text string entries in the signer_payload.role field are provided in Section 5.1.2, “Named actor roles”.
+
+5.2.1. Example
+An example in CBOR-Diag is shown below, which is non-normative:
+
+{
+  "signer_payload": {
+    "sig_type": "cawg.x509.cose",
+    "referenced_assertions": [
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.hash.data",
+        "hash": b64'U9Gyz05tmpftkoEYP6XYNsMnUbnS/KcktAg2vv7n1n8='
+      },
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.thumbnail.claim.jpeg",
+        "hash": b64'G5hfJwYeWTlflxOhmfCO9xDAK52aKQ+YbKNhRZeq92c='
+      },
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.ingredient.v2",
+        "hash": b64'Yzag4o5jO4xPyfANVtw7ETlbFSWZNfeM78qbSi8Abkk='
+      }
+    ],
+    "role": ["cawg.creator"],
+  },
+  "signature": b64'....', // COSE signature
+  "pad1": b64'....', // zero-filled pad buffer
+  "pad2": b64'....'  // zero-filled pad buffer
+}
+5.3. Labels
+Several data types in this specification have labels that can be defined either in this specification or by an external entity.
+
+Labels are non-empty string values organized into namespaces using a period (.) as a separator. The namespace component of the label can be an entity or a reference to a well-established standard. (See ABNF below.)
+
+Labels defined by the CAWG will begin with cawg.. All labels beginning with cawg. that are not defined in the current version of the specification are reserved for the future use of the CAWG and MUST NOT be assigned by any other entity. Future minor version updates (1.2, 1.3, etc.) to this specification MAY define new values for any label using the cawg. prefix.
+
+Entity-specific labels (i.e. those not defined by CAWG) SHALL begin with the Internet domain name for the entity similar to how Java packages are defined (e.g., com.litware, net.fineartschool).
+
+ABNF for labels
+namespaced-label = qualified-namespace label
+qualified-namespace = "cawg" / entity
+entity = entity-component *( "." entity-component )
+entity-component = 1( DIGIT / ALPHA ) *( DIGIT / ALPHA / "-" / "_" )
+label = 1*( "." label-component )
+label-component = 1( DIGIT / ALPHA ) *( DIGIT / ALPHA / "-" / "_" )
+The period-separated components of a label follow the variable naming convention ([a-zA-Z][a-zA-Z0-9_-]*) specified in the POSIX or C locale, with the restriction that the use of a repeated underscore character (__) is reserved for labelling multiple assertions of the same type.
+
+While the use of labels defined by external entities is permitted, implementers should be aware that such labels may not be widely understood by other implementations.
+6. Creating the identity assertion
+6.1. Presenting the signer_payload data structure for signature
+Prior to presenting the credential holder with the signer_payload data structure for signature, any referenced assertions that are in the same C2PA claim as the identity assertion MUST themselves be created. This process is described in Section 10.3.1, “Creating assertions,” of the C2PA technical specification.
+
+The list of referenced assertions MUST include the hard binding assertion that describes the active manifest as described in the opening paragraph of Section 15.12, “Validate the asset’s content,” of the C2PA technical specification.
+
+The list of referenced assertions SHOULD include any assertions necessary to allow the actor to accurately describe their relationship to the content. For example, a c2pa.actions assertion could be referenced to attest that the actor performed those specific actions.
+
+The signer_payload data structure MUST be presented to be signed by the credential holder corresponding to each identity assertion. This process is described in more detail in Section 8, “Credentials, signatures, and validation methods”.
+
+If a data hash assertion is being used, the identity assertion generator MUST also follow the process described in Section 6.3, “Interaction with data hash assertion”.
+6.1.1. Calculating the expected_partial_claim field
+If the identity assertion generator chooses to include the expected_partial_claim field in signer_payload, it MUST be computed as follows:
+
+Create a valid C2PA claim data structure that includes references to all C2PA assertions, including all identity assertions. The hash value for all assertion references MUST be valid and correct, except in the following cases:
+
+For the specific identity assertion being computed, replace the hash value with all zero-value (0x00) bytes.
+
+For any identity assertions whose signing credentials are described via the expected_countersigners field, replace the hash value with all zero-value (0x00) bytes.
+
+Serialize the C2PA claim data structure using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized C2PA claim data structure using one of the algorithms documented in Section 13.1, “Hashing,” of the C2PA technical specification.
+
+The expected_partial_claim field SHOULD contain a CBOR map with the following fields:
+
+alg describing the hash algorithm as described in Section 13.1, “Hashing,” of the C2PA technical specification, and
+
+hash value containing the computed hash of the serialized C2PA claim data structure.
+
+6.1.2. Calculating the expected_claim_generator field
+If the identity assertion generator chooses to include the expected_claim_generator field in signer_payload, it MUST be computed as follows:
+
+Identify the end-entity signing certificate that will be used for the expected C2PA claim generator.
+
+Serialize this signing certificate as a CBOR byte string as described in Section 14.6, “X.509 certificates,” of the C2PA technical specification. This serialization should be performed using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized end-entity certificate using one of the algorithms documented in Section 13.1, “Hashing,” of the C2PA technical specification.
+
+The resulting hash should be used as the expected_claim_generator field.
+
+The expected_claim_generator field SHOULD contain a CBOR map with the following fields:
+
+alg describing the hash algorithm as described in Section 13.1, “Hashing,” of the C2PA technical specification, and
+
+hash value containing the computed hash of the serialized certificate.
+
+6.1.3. Calculating the expected_countersigners field
+If the identity assertion generator chooses to include the expected_countersigners field in signer_payload, it MUST be computed as follows:
+
+For every other identity assertion that will be present in the C2PA Manifest:
+
+Calculate the signer_payload map for that identity assertion. Exclude any expected_countersigners field from that signer_payload map and place the resulting signer_payload structure in the partial_signer_payload field of this identity assertion’s expected_countersigners map.
+
+(optional) Identify the signing credential that will be used to sign that identity assertion.
+
+Serialize the signing credential as a CBOR byte string as described in Serialization for credential types. This serialization should be performed using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized signing credential using one of the algorithms documented in Section 13.1, “Hashing,” of the C2PA technical specification.
+
+Once the above materials have been gathered, the expected_countersigners field SHOULD contain a CBOR array of CBOR maps, each containing the following fields for each identity assertion:
+
+partial_signer_payload (required) containing the expected signer_payload, omitting any expected_countersigners field.
+
+expected_credentials (optional) containing a description of the expected signing credentials:
+
+alg describing the hash algorithm as described in Section 13.1, “Hashing,” of the C2PA technical specification, and
+
+hash value containing the computed hash of the serialized signing credential.
+
+6.1.4. Serialization for credential types
+The signing credential for other identity assertions should be serialized depending on the credential type:
+
+Credential type	Serialization
+X.509 certificate
+
+End-entity certificate
+
+6.2. Creating the assertion
+Once the signature is obtained, the identity assertion can be created and added to the C2PA Manifest’s assertion store, and then referenced in the C2PA claim. If a placeholder assertion was previously added to the C2PA claim, its content MUST now be replaced with the final assertion content as described below.
+
+The signer_payload data structure MUST be unchanged from the data structure that was presented to the credential holder for signature.
+
+The values for the signer_payload.sig_type and signature fields depend on the nature of credential used. Some common signature types are described in Section 8, “Credentials, signatures, and validation methods”.
+
+The identity assertion generator SHOULD independently validate the signature from the credential holder before proceeding.
+
+If a placeholder assertion was used, the values of the pad1 and pad2 fields MUST now be recomputed (adjusted in size) such that the resulting identity assertion exactly matches the size in bytes of the placeholder assertion. If the signature exceeds the space available in the placeholder assertion, the claim generation process as described in Section 6.3, “Interaction with data hash assertion” MUST be repeated with a larger placeholder assertion.
+
+Preferred/deterministic CBOR serialization of byte arrays uses a variable-length integer to specify the length of the encoded binary data. When the length goes from zero to one byte, or one to two bytes (etc.), the length of the resulting pad jumps by two bytes. This means that not all paddings can be expressed using a single padding field. For example, 24-byte and 26-byte pads can be created, but a 25-byte pad cannot. If this situation arises, the desired padding can be split between pad1 and pad2. For example, to make a 25-byte pad, an implementation can encode 19 bytes into pad1 (resulting in an encoded length of 20 bytes), and 4 bytes into pad2 (resulting in 5 bytes.)
+If no placeholder assertion was used, the values of the pad1 and pad2 fields MAY be empty.
+
+The pad1 and pad2 fields of an identity assertion MUST contain only zero-value (0x00) bytes.
+
+6.3. Interaction with data hash assertion
+The process described in this section MUST be followed when using a data hash assertion as described by Section 18.5, “Data hash,” of the C2PA technical specification. This process MAY be followed when using other hard binding assertions.
+The C2PA technical specification explains the need for pre-computing the C2PA asset’s final file layout when using a data hash assertion as follows:
+
+Some asset file formats require file offsets of the C2PA Manifest Store and asset content to be fixed before the manifest is signed, so that hard bindings will correctly align with the content they authenticate. Unfortunately, the size of a manifest and its signature cannot be precisely known until after signing, which could cause file offsets to change. For example, in JPEG-1 files, the entire C2PA Manifest Store must appear in the file before the image data, and so its size will affect the file offsets of content being authenticated.
+
+— Section 10.4: “Multiple step processing”
+Similarly, the size of the identity assertion cannot be known until its signature is obtained. Changing the size of the identity assertion after file layout is completed would invalidate the file offsets contained within the data hash assertion.
+
+In this case, it is necessary to use a placeholder assertion to reserve space for the content of the final identity assertion (including its signature) which will be created later.
+
+When using a data hash assertion, an identity assertion generator MUST follow the process described in Section 10.3, “Creating a claim,” and Section 10.4, “Multiple step processing,” of the C2PA technical specification with additional steps as described below:
+
+Section 10.3.1, “Creating assertions.” Any identity assertion that will be added to the claim MUST be represented during this step by an assertion using the same label as the final identity assertion. The content of the placeholder assertion is unimportant, except that the size in bytes of the placeholder assertion MUST be large enough to accommodate the final identity assertion.
+
+Section 10.3.2.1, “Adding assertions and redactions”
+
+Section 10.3.2.2, “Adding ingredients”
+
+Section 10.3.2.3, “Connecting the signature”
+
+If using C2PA 1.x process, Section 11.4.1, “Prepare the XMP”.
+
+Section 10.4.1, “Create content bindings”
+
+The list of referenced assertions (including the hard binding assertion) MUST be presented to the credential holder for each identity assertion to be added, as described in Section 6.1, “Presenting the signer_payload data structure for signature” by the corresponding credential holder. Once each signature has been obtained, the placeholder assertion content MUST be replaced with the final identity assertion content incorporating that signature. The identity assertion generator SHOULD independently validate the signature from the credential holder before proceeding.
+
+The remaining steps from Section 10.4, “Multiple step processing,” MUST now be completed.
+
+Section 10.3.2.4, “Signing a claim”
+
+Section 10.3.2.5, “Time stamps”
+
+Section 10.3.2.6, “Credential revocation information”
+
+These steps are also represented by the following sequence diagram, which is non-normative:
+
+Credential holder
+Identity assertion generator
+Credential holder
+Identity assertion generator
+Includes placeholder assertions
+loop
+[For each credential holder]
+Create assertions
+Create content bindings
+Request signature over list of referenced assertions
+Provide signature over list of referenced assertions
+Independently verify signature
+Replace placeholder assertions with final identity assertions
+Create claim
+Issue claim generator signature for final claim
+Create manifest store
+7. Validating the identity assertion
+7.1. Validation method
+Validation of the C2PA Manifest MUST be completed with a finding that the manifest is at least well-formed as per Section 14.3.2, Well-formed manifest,” of the C2PA technical specification before a validator attempts to report on the validity of an identity assertion.
+An identity assertion MUST contain a valid CBOR data structure that contains the required fields as documented in the identity rule in Section 5.2, “CBOR schema”. The cawg.identity.cbor.invalid error code SHALL be used to report assertions that do not follow this rule. A validator SHALL NOT consider any extra fields not documented in the identity rule during the validation process.
+
+Extra fields can be read and processed in non-validation scenarios.
+For each entry in signer_payload.referenced_assertions, the validator MUST verify that the same entry exists in either the created_assertions or gathered_assertions entry of the * the same C2PA claim in which the *identity assertion appears, or any C2PA claim which can be found by recursively tracing the ingredient manifests (as described by Section 18.15, “Ingredient manifests,” of the C2PA technical specification) of the C2PA claim in which the identity assertion appears. (For version 1 claims, the entry must appear in the assertions entry.) The cawg.identity.assertion.mismatch error code SHALL be used to report violations of this rule.
+
+The validator SHOULD verify that no entry in signer_payload.referenced_assertions is duplicated. The cawg.identity.assertion.duplicate error code SHALL be used to report violations of this rule.
+
+The validator MUST ensure that signer_payload.referenced_assertions contains a reference to the specific hard binding assertion specified using the approach described in the opening paragraph of Section 15.12, “Validate the asset’s content,” of the C2PA technical specification.
+
+The cawg.identity.hard_binding_missing error code SHALL be used to report a missing hard binding assertion reference.
+
+The cawg.identity.hard_binding_incorrect error code SHALL be used to report an incorrect hard binding assertion reference.
+
+The validator MUST maintain a list of valid signer_payload.sig_type values and corresponding code paths for the signature values that it is prepared to accept. Validators SHOULD be prepared to accept all signature types described in Section 8, “Credentials, signatures, and validation methods”. The cawg.identity.sig_type.unknown error code SHALL be used to report assertions that contain unrecognized signer_payload.sig_type values.
+
+The signature field of an identity assertion MUST contain a valid signature. The procedure for validating each signature type and corresponding status codes are described in Section 8, “Credentials, signatures, and validation methods”.
+
+The pad1 and pad2 fields of an identity assertion MUST contain only zero-value (0x00) bytes. The cawg.identity.pad.invalid error code SHALL be used to report assertions that contain other values in these fields.
+
+7.1.1. Validating the expected_partial_claim field
+If the identity assertion contains an expected_partial_claim field in signer_payload, it MUST be validated as follows:
+
+Locate the C2PA claim data structure that includes this identity assertion.
+
+Replace the hash value for the specific identity assertion being validated with all zero-value (0x00) bytes.
+
+If the identity assertion contains an expected_countersigners field in signer_payload, for each entry in the expected_countersigners array where an identity assertion can be found that matches the signing credentials used as described in Serialization for credential types, replace the hash field for that identity assertion being validated with all zero-value (0x00) bytes.
+
+Serialize the updated C2PA claim data structure using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized C2PA claim data structure using the hash algorithm described by expected_partial_claim.alg.
+
+The resulting hash MUST exactly match the value present in expected_partial_claim.hash. The cawg.identity.expected_partial_claim.mismatch error code SHALL be used to report assertions that contain other values.
+
+7.1.2. Validating the expected_claim_generator field
+If the identity assertion contains an expected_claim_generator field in signer_payload, it MUST be validated as follows:
+
+Locate the end-entity signing certificate that is present in the C2PA claim signature. It can be located as described in Section 14.6, “X.509 certificates,” of the C2PA technical specification.
+
+Identify the CBOR bytes specific to this signing certifcate. If necessary, any re-serialization should be performed using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized end-entity certificate using the hash algorithm described by expected_claim_generator.alg.
+
+The resulting hash MUST exactly match the value present in expected_claim_generator.hash. The cawg.identity.expected_claim_generator.mismatch error code SHALL be used to report assertions that contain other values.
+
+7.1.3. Validating the expected_countersigners field
+If the identity assertion contains an expected_countersigners field in signer_payload, it MUST be validated as follows:
+
+For every other identity assertion that is present in the C2PA Manifest:
+
+Find the signer_payload map in that identity assertion. Remove any expected_countersigners field that is found in that signer_payload map. This will be referred to in the rest of this process as the partial signer payload.
+
+Search the expected_countersigners list in the current identity assertion being validated for an entry where partial_signer_payload matches the just-computed partial signer payload. If no such entry can be found, stop validating and return the cawg.identity.unexpected_countersigner error code.
+
+If the entry in expected_countersigners also contains an expected_credentials entry:
+
+Serialize the signing credential as a CBOR byte string as described in Serialization for credential types. This serialization should be performed using Section 4.2.1, “Core deterministic encoding,” of RFC 8949: Concise binary object representation.
+
+Compute a hash of the serialized signing credential using the algorithm specified by the alg entry in the expected_credentials map.
+
+Compare the just-computed hash with the hash entry in the expected_credentials map. If they do not match, stop validating and return the cawg.identity.expected_countersigner.mismatch error code.
+
+If any entry exists in expected_countersigners that was not matched by the previous loop, the cawg.identity.expected_countersigner.missing error code SHOULD be returned.
+
+7.2. Status codes
+The set of standard success and failure codes for identity assertion validations are defined below. These follow the format defined by the section titled Section 15.2, Returning validation results,” of the C2PA technical specification.
+
+The url field for a status code MUST always be the label of the identity assertion. It is omitted from the tables below.
+
+7.2.1. Success codes
+Value	Meaning
+cawg.identity.trusted
+
+The identity assertion, including the referenced credentials and signature binding the credential holder to the C2PA claim, is validated. The named actor is considered trusted according to the evaluation in Section 9.3, “Trust scenarios in identity assertion”.
+
+cawg.identity.well-formed
+
+The identity assertion, including the referenced credentials and signature binding the credential holder to the C2PA claim, is validated. The evaluation in Section 9.3, “Trust scenarios in identity assertion” could not identify any root of trust for the named actor.
+
+7.2.2. Failure codes
+Value	Meaning
+cawg.identity.cbor.invalid
+
+The CBOR of the identity assertion is not valid.
+
+cawg.identity.assertion.mismatch
+
+The identity assertion contains an assertion reference that could not be found in the C2PA claim or any ingredient’s claim.
+
+cawg.identity.assertion.duplicate
+
+The identity assertion contains one or more duplicate assertion references.
+
+cawg.identity.credential_revoked
+
+The identity assertion was signed using a revoked credential.
+
+cawg.identity.hard_binding_missing
+
+The identity assertion does not reference a hard binding assertion.
+
+cawg.identity.hard_binding_incorrect
+
+The identity assertion does not reference the correct hard binding assertion.
+
+cawg.identity.sig_type.unknown
+
+The signer_payload.sig_type of the identity assertion is not recognized.
+
+cawg.identity.pad.invalid
+
+The pad1 or pad2 field contains non-zero bytes.
+
+cawg.identity.expected_partial_claim.mismatch
+
+The signer_payload.expected_partial_claim field did not match the C2PA claim data structure.
+
+cawg.identity.expected_claim_generator.mismatch
+
+The signer_payload.expected_claim_generator field did not match the X.509 certificate used to sign the C2PA claim.
+
+cawg.identity.unexpected_countersigner
+
+An identity assertion exists in this C2PA Manifest that was not described in signer_payload.expected_countersigners.
+
+cawg.identity.expected_countersigner.mismatch
+
+An identity assertion exists in this C2PA Manifest that has the expected signer_payload but has different signing credentials than were described in signer_payload.expected_countersigners.
+
+cawg.identity.expected_countersigner.missing
+
+The signer_payload.expected_countersigners describes an identity assertion that does not exist in this C2PA Manifest.
+
+Additional failure codes relating to specific signature types are defined in Section 8, “Credentials, signatures, and validation methods”.
+8. Credentials, signatures, and validation methods
+The identity assertion allows multiple signature types to be represented, although only one verifiable identifier and corresponding signature can be used in any single assertion.
+
+The signature type is represented by the signer_payload.sig_type field. Some credential types are described in this specification. It is strongly recommended that identity assertion validators be prepared to read all of the signature types described in this specification.
+
+Other specifications MAY define additional signer_payload.sig_type values and the corresponding definition of signature, subject to restrictions described in Section 5.3, “Labels”.
+
+Credential types in minor version updates
+Future minor version updates (1.1, 1.2, etc.) to this specification MAY:
+
+Add new sections to this specification defining new credential types and their corresponding signer_payload.sig_type values.
+
+Mark existing sections of this specification defining existing credential types and their corresponding signer_payload.sig_type values as deprecated.
+
+Such updates to the specification SHOULD continue to use the cawg.identity assertion label.
+
+8.1. Identity claims aggregation
+8.1.1. Identity claims aggregation conceptual overview
+This section is non-normative.
+
+Content creators (named actors) may wish to document their role in creating a C2PA asset using identity signals that are commonly understood in the mass market. Examples of such signals include:
+
+verified web sites
+
+social media accounts
+
+official ID documentation
+
+professional accreditations
+
+organizational affiliations
+
+These common identity signals, though popular, are not well-designed for use as lasting identifiers. Some of the challenges associated with these identity signals include:
+
+The methods for accessing, describing, and presenting these signals are widely disparate.
+
+These signals typically do not provide the ability to issue signatures on the named actor’s behalf.
+
+The verification methods associated with these signals are typicially designed for momentary validation; they typically do not provide artifacts that can be independently verified at an arbitrary time (perhaps months or years after issuance).
+
+To facilitate the use of such identity signals, the named actor may use the services of a third-party intermediary that they trust to gather these signals and to restate them on their behalf.
+
+We call this intermediary an identity claims aggregator. It performs two important roles:
+
+It collects and verifies identity attestation claims from various identity providers such as social media sites and ID verification vendors.
+
+When the named actor creates content, it creates a unique asset-specific credential binding the identity attestation claims collected earlier to the specific C2PA asset being described.
+
+An identity claims aggregation claim does not support a named actor using their own credential to directly issue their own signature for an identity assertion. This may be added in a future version of this specification.
+The two workflows performed by the identity claims aggregator are described in the sections below:
+
+8.1.1.1. Providing identity claims to identity claims aggregator
+In the first workflow, the named actor asks the identity claims aggregator to verify an identity claim. The identity claims aggregator contacts the identity provider to verify the identity claim. If that verification is successful, the identity claims aggregator remembers the provided information for later use on the named actor’s behalf.
+
+Gathering identity claims
+Figure 6. Gathering identity claims
+This workflow can be repeated any number of times to provide additional identity signals for the named actor.
+
+8.1.1.2. Creating content using the aggregated identity claims
+Once the identity claims aggregator has verified one or more identity signals, the named actor can then use an authoring tool to create content. This authoring tool collaborates with the identity claims aggregator to attach the identity claims which have been aggregated to date to the C2PA asset being created.
+
+Creating content using identity claims
+Figure 7. Creating content using identity claims
+This workflow can be repeated any number of times to create new content on behalf of the named actor.
+
+8.1.1.3. Interpreting an identity assertion using identity claims aggregation
+At some later time, an identity assertion consumer will interpret this identity assertion. Assuming that the identity assertion is deemed valid and from a trustworthy source, the content of the assertion should be interpreted as follows:
+
+The named actor described by this credential has presented one or more identity signals to this identity claims aggregation service. Those claims were verified and deemed valid by this service as of the times indicated in the credential.
+
+The signature on the credential indicates that the identity claims aggregator attests that this same named actor has presented the C2PA asset described by this C2PA Manifest to this service and has claimed a role in the production of said asset.
+
+— Signed by identity claims aggregator
+8.1.2. Identity claims aggregation technical description
+The identity claims aggregator will produce a specific type of W3C verifiable credential called an “identity claims aggregation” that binds the identity attestation claims to the C2PA asset. This credential, once signed with the identity claims aggregator’s private key, is the signature value for the identity assertion. The signature value is further described in Section 8.1.4, “Verifiable credential proof mechanism”.
+
+The signer_payload.sig_type value for such an assertion MUST be cawg.identity_claims_aggregation.
+
+The trust model in this scenario is as described in Section 9.3.2, “Named actor without signature authority”.
+
+An identity claims aggregation MUST meet all requirements for a verifiable credential as described in the W3C Verifiable credentials data model (either version 1.1 or version 2.0) and additional requirements as stated in the remainder of this section.
+
+8.1.2.1. Context
+The @context property MUST be present and MUST contain at least the following two entries:
+
+https://www.w3.org/2018/credentials/v1 or https://www.w3.org/ns/credentials/v2, depending on which version of the W3C verifiable credentials data model is being used
+
+https://cawg.io/identity/1.1/ica/context/
+
+8.1.2.2. Type
+The type property MUST be present and MUST contain at least the following two entries:
+
+VerifiableCredential
+
+IdentityClaimsAggregationCredential
+
+8.1.2.3. Issuer
+The issuer property MUST be present and MUST follow the format as specified in Section 4.5, “Issuer,” of the Verifiable credentials data model.
+
+8.1.2.4. Validity
+If using Verifiable credentials data model, version 1.1, the issuanceDate field MUST exist and it MUST express the date and time when the credential becomes valid, as specified in Section 4.6, “Issuance date,” of the Verifiable credentials data model.
+
+If using Verifiable credentials data model, version 2.0, the validFrom field MUST exist and it MUST express the date and time when the credential becomes valid, as specified in Section 4.8, “Validity period,” of the Verifiable credentials data model.
+
+8.1.2.5. Verified identities
+The verifiedIdentities property MUST be present and MUST be a non-empty array. Every item in the array MUST contain information about the named actor as verified by the identity assertion generator or a service contacted by the identity assertion generator.
+
+Example:
+"credentialSubject": {
+  ...
+  "verifiedIdentities": [
+    {
+      "name": "First-Name Last-Name",
+      "type": "cawg.document_verification",
+      "provider": {
+        "id": "https://example-id-verifier.com",
+        "name": "Example ID Verifier",
+      },
+      "verifiedAt": "2024-07-26T22:30:15Z"
+    },
+    {
+      "type": "cawg.web_site",
+      "uri": "named-actor-site.example",
+      "verifiedAt": "2024-09-25T22:13:35Z"
+    },
+    {
+      "type": "cawg.affiliation",
+      "provider": {
+        "id": "https://example-affiliated-organization.com",
+        "name": "Example Affiliated Organization",
+      },
+      "verifiedAt": "2024-07-26T22:29:57Z"
+    },
+    {
+      "type": "cawg.social_media",
+      "name": "Silly Cats 929",
+      "username": "username",
+      "uri": "https://example-social-network.com/username",
+      "provider": {
+        "id": "https://example-social-network.com",
+        "name": "Example Social Network"
+      },
+      "verifiedAt": "2024-05-27T08:40:39.569856Z"
+    },
+    {
+      "type": "cawg.crypto_wallet",
+      "address": "fa64ef445f994138bdeb9baac6ce1e16",
+      "uri": "https://example-crypto-wallet.com/fa64ef445f994138bdeb9baac6ce1e16",
+      "provider": {
+        "id": "https://example-crypto-wallet.com",
+        "name": "Example Crypto Wallet"
+      },
+      "verifiedAt": "2024-05-27T08:40:39.569856Z"
+    }
+  ]
+  ...
+}
+8.1.2.5.1. Verified identity type
+The verifiedIdentities[?].type property MUST be present and MUST be a non-empty string that defines the type of verification that was performed by the identity provider. This specification defines the following values which identity assertion consumers SHOULD be prepared to accept:
+
+Value	Meaning
+cawg.document_verification
+
+The identity provider has verified one or more government-issued identity documents presented by the named actor.
+
+cawg.web_site
+
+The named actor has proven control over a specific domain to the identity claims aggregator.
+
+cawg.affiliation
+
+The identity provider is attesting to the named actor’s membership in an organization. This could be a professional organization or an employment relationship.
+
+cawg.social_media
+
+The named actor has demonstrated control over an account (typically a social media account) hosted by the identity provider.
+
+cawg.crypto_wallet
+
+The named actor has demonstrated control over an account (typically a crypto-wallet) hosted by the identity provider.
+
+Other string values MAY be used in verifiedIdentities[?].type, subject to restrictions described in Section 5.3, “Labels”.
+
+8.1.2.5.2. Display name
+The verifiedIdentities[?].name property MAY be present. If present, it MUST NOT be empty and must be a string defining the named actor’s name as understood by the identity provider.
+
+If the type of this verified identity is cawg.document_verification, the verifiedIdentities[?].name property MUST be present and MUST exactly match the name found on the identity documents.
+
+8.1.2.5.3. User name
+The verifiedIdentities[?].username property MAY be present. If present, it MUST be a non-empty text string representing the named actor’s user name as assigned by the identity provider.
+
+If the type of this verified identity is cawg.social_media, the verifiedIdentities[?].username property MUST be present and MUST be the unique alphanumeric string that can be used to identity the named actor within this service.
+
+8.1.2.5.4. Address
+The verifiedIdentities[?].address property MAY be present. If present, it MUST be a non-empty text string representing the named actor’s cryptographic address as assigned by the identity provider.
+
+If the type of this verified identity is cawg.crypto_wallet, the verifiedIdentities[?].address property MUST be present and MUST be the unique alphanumeric string that can be used to identity the named actor within this service.
+
+8.1.2.5.5. URI
+The verifiedIdentities[?].uri property MAY be present. If present, it must be a valid URI which is the primary point of contact for the named actor as assigned by the identity provider.
+
+If the type of this verified identity is cawg.web_site, the verifiedIdentities[?].uri property MUST be present and must be the primary web URI for the named actor’s web site as validated by the identity claims aggregator.
+
+If the type of this verified identity is cawg.social_media, it is RECOMMENDED that the verifiedIdentities[?].uri be the primary web URI for the named actor’s social media account.
+
+The presence of the verifiedIdentities[?].uri property SHOULD NOT be construed as a representation that the entirety of content available at any future time at that URI is attested to by the named actor, but rather that there was a demonstrable relationship between the named actor and the URI at the stated time of verification. (See Identity verification date.)
+8.1.2.5.6. Identity verification method
+The verifiedIdentities[?].method property is OPTIONAL. If present, it MUST be a non-empty string that defines the method by which the identity assertion generator contacted the identity provider to obtain the verification. This specification defines the following values which identity assertion consumers SHOULD be prepared to accept:
+
+Value	Meaning	Trust anchor
+cawg.dns_record
+
+The identity claims aggregator provided unique content to the named actor to place in a DNS record. This content was subsequently verified by the identity claims aggregator.
+
+Example: Domain Control Validation using DNS (IETF Draft)
+
+Self-asserted
+
+cawg.uri_file_verification
+
+The identity claims aggregator provided unique file content to the named actor to place at the claimed URI. This content was subsequently verified by the identity claims aggregator.
+
+Example: Use the HTTP Practical Demonstration DCV method to verify domain control (Digicert)
+
+Self-asserted
+
+cawg.email
+
+The identity claims aggregator sent an e-mail to the claimed domain’s administrative contacts and received an appropriate response to prove control over the domain.
+
+Example: Use Email verification to verify domain control on an OV or EV TLS certificate (Digicert)
+
+Domain registrar and e-mail provider
+
+cawg.uri_meta_tag_verification
+
+The identity claims aggregator provided unique content to the named actor to be placed in an HTML <meta> tag at the claimed URI. This content was subsequently verified by the identity claims aggregator.
+
+Example: Verification method details: HTML tag (Google Support)
+
+Self-asserted
+
+cawg.federated_login
+
+The identity claims aggregator initiated, at the named actor’s request, a federated log-in to a service operated by an identity provider. The identity claims aggregator received and recorded information about the named actor.
+
+Example: OAuth2
+
+Identity provider
+
+Other string values MAY be used in verifiedIdentities[?].method, subject to restrictions described in Section 5.3, “Labels”.
+
+The examples provided here are non-normative, but are intended to demonstrate the kind of procedures described by each method type.
+
+8.1.2.5.7. Identity verification date
+The verifiedIdentities[?].verifiedAt MUST be present and MUST be a valid date-time as specified by RFC 3339. It represents the earlier of the following:
+
+The date and time when the relationship between the named actor and the identity provider was verified by the identity assertion generator.
+
+In the case where the named actor’s identity was verified by a third party (for example, for document verification), the date and time at which the named actor’s identity was verified by the third party.
+
+8.1.2.5.8. Identity provider details
+The verifiedIdentities[?].provider property MUST be an object and MUST be present. It contains details about the identity provider and the identity verification process. This specification mentions at least two properties that MAY be used to represent the named actor’s verification details: id and name.
+
+Identity provider ID
+The verifiedIdentities[?].provider.id SHOULD be present. If present, it MUST be a valid URI that contains information about the identity provider. This SHOULD NOT be confused with any information about the named actor itself. It is RECOMMENDED that this resolve to a Section 3.2.3, “W3C decentralized identifier document” if one is available.
+
+Identity provider name
+The verifiedIdentities[?].provider.name MUST be present and MUST be a natural language string. The verifiedIdentities[?].provider.name property is the name of the identity provider.
+
+8.1.2.6. Binding to C2PA asset
+The credentialSubject field MUST contain a c2paAsset entry, which MUST be the JSON serialization of the signer_payload data structure presented for signature with the following adaptations:
+
+All CBOR bytestring values in signer_payload data structure (for example, hash entries in the hashlink data structure) MUST be converted to the corresponding base 64 encoding as specified in Section 4, “Base 64 Encoding,” of RFC 4648. The base 64 encoding MUST NOT use the URL-safe variation of base 64. The encoding MUST NOT include line feeds or additional annotations not directly required by the core base 64 specification.
+
+The JSON encoding MUST use the field names exactly as specified in Section 5.1, “Overview”.
+
+Field names in the signer_payload data structure (see Section 5.1, “Overview”) are specified using lower-case letters with underscore characters (commonly referred to as snake_case). Field names in the verifiable credential data model are typically specified using lower-case letters with upper-case letters for word breaks (commonly referred to as camelCase). A translation between the two styles MUST NOT be performed as it creates the potential for miscommunication.
+Example 4. c2paAsset entry
+"credentialSubject": {
+  ...
+  "c2paAsset": {
+    ...
+    "referenced_assertions": [
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.hash.data",
+        "hash": "U9Gyz05tmpftkoEYP6XYNsMnUbnS/KcktAg2vv7n1n8="
+      },
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.thumbnail.claim.jpeg",
+        "hash": "G5hfJwYeWTlflxOhmfCO9xDAK52aKQ+YbKNhRZeq92c="
+      },
+      {
+        "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.ingredient.v2",
+        "hash": "Yzag4o5jO4xPyfANVtw7ETlbFSWZNfeM78qbSi8Abkk="
+      }
+    ],
+    "sig_type": "cawg.identity_claims_aggregation"
+    ...
+  }
+  ...
+}
+8.1.2.7. Credential status (revocation)
+An identity claims aggregator SHOULD allow for an identity claims aggregation claim to be revoked by adding a credentialStatus section to the credential as described in §4.9, Status, of the Verifiable credentials data model, and subject to the following recommendations:
+
+At least one entry SHOULD have its statusPurpose field set to revocation.
+
+Status list credentials SHOULD be expressed using a W3C bitstring status list, version 1.0 or later. Other mechanisms SHOULD NOT be used because identity assertion consumers may not be prepared to correctly interpret such status lists.
+
+8.1.2.8. Schema
+The requirements for identity claims aggregation credentials are summarized in a verifiable credentials JSON schema available at:
+
+https://cawg.io/identity/1.1/ica/schema/vc1.1/ (when using Verifiable credentials data model 1.1), or
+
+https://cawg.io/identity/1.1/ica/schema/vc2.0/ (when using Verifiable credentials data model 2.0).
+
+The inclusion of the credentialSchema property is RECOMMENDED (as shown in the example below) to specify the structure and constraints of the credential’s data.
+
+Example 5. Inclusion of credential schema
+{
+  ...
+  "credentialSchema": [
+    {
+      "id": "https://cawg.io/identity/1.1/ica/schema/vc2.0/",
+      "type": "JSONSchema"
+    }
+  ]
+}
+8.1.3. Identity claims aggregation verifiable credential example
+An example of the identity claims aggregation verifiable credential is given below:
+
+Example 6. Identity claims aggregation verifiable credential
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://cawg.io/identity/1.1/ica/context/"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "IdentityClaimsAggregationCredential"
+  ],
+  "issuer": "did:web:connected-identities.identity.adobe.com",
+  "validFrom": "2024-05-27T11:40:40Z",
+  "credentialSubject": {
+    "id": "did:web:connected-identities.identity.adobe.com:user:jsadkfnaksdnj",    
+    "verifiedIdentities": [
+      {
+        "name": "First-Name Last-Name",
+        "type": "cawg.document_verification",
+        "provider": {
+          "id": "https://example-id-verifier.com",
+          "name": "Example ID Verifier"
+        },
+        "verifiedAt": "2024-07-26T22:30:15Z"
+      },
+      {
+        "type": "cawg.affiliation",
+        "provider": {
+          "id": "https://example-affiliated-organization.com",
+          "name": "Example Affiliated Organization"
+        },
+        "verifiedAt": "2024-07-26T22:29:57Z"
+      },
+      {
+        "type": "cawg.social_media",
+        "name": "Silly Cats 929",
+        "username": "username",
+        "uri": "https://example-social-network.com/username",
+        "provider": {
+          "id": "https://example-social-network.com",
+          "name": "Example Social Network"
+        },
+        "verifiedAt": "2024-05-27T08:40:39.569856Z"
+      },
+      {
+        "type": "cawg.crypto_wallet",
+        "username": "username",
+        "uri": "https://example-crypto-wallet.com/username",
+        "provider": {
+          "id": "https://example-crypto-wallet.com",
+          "name": "Example Crypto Wallet"
+        },
+        "verifiedAt": "2024-05-27T08:40:39.569856Z"
+      }
+    ],
+    "c2paAsset": {
+      "referenced_assertions": [
+        {
+          "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.hash.data",
+          "hash": "U9Gyz05tmpftkoEYP6XYNsMnUbnS/KcktAg2vv7n1n8="
+        },
+        {
+          "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.thumbnail.claim.jpeg",
+          "hash": "G5hfJwYeWTlflxOhmfCO9xDAK52aKQ+YbKNhRZeq92c="
+        },
+        {
+          "url": "self#jumbf=c2pa/urn:uuid:F9168C5E-CEB2-4faa-B6BF-329BF39FA1E4/c2pa.assertions/c2pa.ingredient.v2",
+          "hash": "Yzag4o5jO4xPyfANVtw7ETlbFSWZNfeM78qbSi8Abkk="
+        }
+      ],
+      "sig_type": "cawg.identity_claims_aggregation"
+    }
+  },
+  "credentialSchema": [
+    {
+      "id": "https://cawg.io/identity/1.1/ica/schema/vc2.0/",
+      "type": "JSONSchema"
+    }
+  ]  
+}
+8.1.4. Verifiable credential proof mechanism
+The signature field of an identity assertion using the identity claim aggregation mechanism MUST be secured using a COSE signature as described by Section 3.3.1, “Securing JSON-LD verifiable credentials with COSE,” of the W3C standard Securing verifiable credentials using JOSE and COSE. The signature payload MUST begin with the tagged COSE_Sign1 structure. As described in that standard, the unsecured verifiable credential is the unencoded COSE_Sign1 payload.
+
+The COSE signature MAY use a RFC 3161-compliant time stamp to provide an additional, independent signal as to when the identity claims aggregator generated the identity assertion. If so, this time stamp shall be generated as described by Section 10.3.2.5, “Time-stamps,” of the C2PA technical specification.
+
+If a time stamp is present, it MUST use a version 2 or later time stamp as defined in Section 10.3.2.5.2, “Choosing the payload.” A version 1 time stamp MUST NOT be used.
+If the identity claims aggregator’s credential supports querying its online credential status, the identity claims aggregator SHOULD include credential revocation information as described in Section 10.3.2.6, “Credential revocation information,” of the C2PA technical specification.
+
+8.1.4.1. Signature algorithms
+The COSE signature MUST be secured using one of the signature algorithms defined in Section 13.2, “Digital signatures,” in version 2.2 or any subsequent version of the C2PA technical specification.
+
+8.1.4.2. DID methods
+The public key corresponding to the issuer field SHALL be discoverable as a verificationMethod using a publicly-documented DID method.
+
+As of this writing, a current implementation of an identity claims aggregators uses did:web, so it is RECOMMENDED that ICA consumers be prepared to read that method.
+
+Other DID methods MAY be used but implementers are advised that such DIDs may not be widely understood by identity assertion consumers.
+
+A future version of this specification will likely align with the forthcoming work of one or both of the following working groups:
+
+W3C DID Methods Working Group
+
+DID method working group at DIF
+
+Implementers SHOULD consult this section in the current version of this specification when releasing software updates and ensure their supported DID methods conform to it.
+
+8.1.4.3. DID verification methods
+The verificationMethod containing the issuer’s public key SHALL be expressed in the DID document using a publicly-documented DID verification method type.
+
+It is RECOMMENDED that identity claims aggregators use one of the DID verification methods from the list below:
+
+JsonWebKey2020
+
+Other DID verification methods MAY be used but implementers are advised that such DID documents may not be widely understood by identity assertion consumers.
+
+Implementers SHOULD consult this section in the current version of this specification when releasing software updates and ensure their supported DID verification methods conform to it.
+
+8.1.5. Validating an identity assertion with an identity claims aggregation credential
+If the value of signer_payload.sig_type is cawg.identity_claims_aggregation, the validator SHOULD proceed with validation of the signature value as described in the remainder of this section.
+
+A successful validation report SHOULD include the content of the verifiable credential and available information about the credential’s issuer.
+
+8.1.5.1. Prerequisites
+A validator shall maintain the following lists for identity claims aggregation credential issuers:
+
+A list of direct issuers of identity claims aggregation that the validator considers trusted.
+
+A list of trust anchors (issuers of identity claims aggregator credentials) that the validator considers trusted.
+
+As of this writing, the Creator Assertions Working Group has not provided guidance about which identity claims aggregators to consider trusted.
+8.1.5.2. W3C verifiable credentials verification
+The raw content of the signature value is expected to be a COSE_Sign1 data structure as described in Section 8.1.4, “Verifiable credential proof mechanism”. The validator SHALL follow the steps outlined in the following subsections in the order presented.
+
+8.1.5.2.1. Parse the COSE_Sign1 structure
+The validator SHALL parse the full signature value as a COSE_Sign1 object as described in Section 4.2, “Signing with one signer,” of RFC 9052. If parsing fails, the validator MUST stop validation at this point and issue the failure code cawg.ica.invalid_cose_sign1.
+
+The validator SHALL inspect the COSE_Sign1 protected header alg to determine the cryptographic algorithm used to issue the signature. The alg value MUST be one of the following algorithm labels (corresponding to the values supported by the C2PA technical specification as of this writing):
+
+-7 (ECDSA w/SHA-256)
+
+-35 (ECDSA w/ SHA-384)
+
+-36 (ECDSA w/ SHA-512)
+
+-37 (RSASSA-PSS w/ SHA-256)
+
+-38 (RSASSA-PSS w/ SHA-384)
+
+-39 (RSASSA-PSS w/ SHA-512)
+
+-8 (EdDSA)
+
+Only the Ed25519 instance of EdDSA is supported.
+If the alg header contains any other value or is not present, the validator MUST issue the failure code cawg.ica.invalid_alg but MAY continue validation.
+
+The validator SHALL inspect the COSE_Sign1 protected header content type to determine the content type of the enclosed credential. The content type header MUST be the exact value application/vc. If it is not, the validator MUST issue the failure code cawg.ica.invalid_content_type but MAY continue validation.
+
+8.1.5.2.2. Parse the verifiable credential
+The validator SHALL obtain the unprotected payload of the COSE_Sign1 data structure. This payload is the raw JSON-LD content of the verifiable credential. A validator SHALL attempt to parse the core verifiable credential data syntax of this credential using the following methods:
+
+Section 6, “Syntaxes,” of Verifiable credentials data model, version 1.1
+
+Section 6, “Syntaxes,” of Verifiable credentials data model, version 2.0
+
+If the validator is unable to parse the credential using either version of the Verifiable credentials data model, the validator MUST stop validation at this point and issue the failure code cawg.ica.invalid_verifiable_credential.
+
+This specification defines a series of success and failure codes that align with the C2PA technical specification. A validator MAY also provide supplementary information to its client, such as “problem details” as defined in Section 7.1, “Validation,” of the W3C verifiable credentials data model specification.
+8.1.5.2.3. Obtain the credential issuer’s public key
+The validator SHALL obtain the identity of the identity claims aggregator by inspecting the issuer field of the verifiable credential. The identity SHOULD be expressed as a DID (decentralized identifier), either as issuer itself or issuer.id. If no DID is located at either location, the validator MUST issue the failure code cawg.ica.invalid_issuer but MAY continue validation.
+
+The validator SHALL resolve the DID document as described in Section 7.1, “DID resolution,” of the DID specification. If the DID uses a DID method that is unsupported by the validator, the validator MUST issue the failure code cawg.ica.did_unsupported_method but MAY continue validation. If the DID can not be resolved, the validator MUST issue the failure code cawg.ica.did_unavailable but MAY continue validation.
+
+The validator SHALL parse the DID document and locate within the DID document the assertionMethod verification method as described in Section 5.3.2, “Assertion,” of the DID specification. This verification method SHALL contain public key material corresponding to the stated issuer. If the DID document can not be parsed or the public key material can not be located, the validator MUST issue the failure code cawg.ica.invalid_did_document but MAY continue validation.
+
+The validator SHALL verify that the type code for this public key is on the supported list of DID verification methods as described in Section 8.1.4.3, “DID verification methods”. If the type is not supported, the validator MUST issue the failure code cawg.ica.invalid_did_document but MAY continue validation.
+
+The validator SHALL verify that the issuer’s DID is present or can be traced to its preconfigured list of trustable entities. If the issuer is not verifiably trusted, the validator MUST issue the failure code cawg.ica.untrusted_issuer but MAY continue validation.
+
+8.1.5.2.4. Verify the COSE signature
+The validator SHALL verify the signature using the public key material just identified and the unsecured verifiable credential as payload as described by Section 4.4, “Signing and verification process,” of RFC 9052. If the signature does not match, the validator MUST issue the failure code cawg.ica.signature_mismatch but MAY continue validation.
+
+8.1.5.2.5. Verify the time stamp, if present
+The validator SHALL inspect the time stamp included in the COSE_Sign1 data structure if it is present. This will be stored in a COSE unprotected header named sigTst2. If such a header is found, the validator SHALL follow the procedure described in Section 10.3.2.5, “Time-stamps,” of the C2PA technical specification. If the validation is successful, the validator MUST issue the success code cawg.ica.time_stamp.validated. If the validation is not successful, the validator MUST issue the status code cawg.ica.time_stamp.invalid. It MAY continue validation, but MUST NOT use the time stamp in any further validation calculation.
+
+C2PA “version 1” time stamps are not supported when used in identity assertions. A validator SHOULD ignore any value found in a sigTst unprotected header.
+8.1.5.2.6. Verify the credential’s validity range
+The validator SHALL inspect the credential’s effective date. This may be stored as issuanceDate or validFrom, depending on the version of the verifiable credentials data model in use. If this field is missing, the validator MUST issue the failure code cawg.ica.valid_from.missing but MAY continue validation.
+
+The validator SHALL compare the effective date of the credential against each of the following values, if available:
+
+Current date and time
+
+Time stamp for the C2PA Manifest as described in Section 10.3.2.5, “Time-stamps,” of the C2PA technical specification
+
+Time stamp for the COSE signature as described in Section 8.1.4, “Verifiable credential proof mechanism”
+
+If the credential’s effective date is later than any of the above values, the validator MUST issue the failure code cawg.ica.valid_from.invalid but MAY continue validation.
+
+If the credential contains an expiration date, the validator SHALL inspect that date. This may be stored as expirationDate or validUntil, depending on the version of the verifiable credentials data model in use. If this field is missing, the validator SHALL proceed without issuing any status code.
+
+If the expiration date is present, the validator SHALL compare the expiration date of the credential against each of the following values, if available:
+
+Current date and time
+
+Time stamp for the C2PA Manifest as described in Section 10.3.2.5, “Time-stamps,” of the C2PA technical specification
+
+Time stamp for the COSE signature as described in Section 8.1.4, “Verifiable credential proof mechanism”
+
+If the credential’s expiration date is earlier than any of the above values, the validator MUST issue the failure code cawg.ica.valid_until.invalid but MAY continue validation.
+
+8.1.5.2.7. Verify the credential’s revocation status
+If the credential contains a credentialStatus entry, the validator SHALL inspect the contents of that entry. If the entry contains an entry with its statusPurpose set to revocation, the validator SHALL follow the procedures described as described by the corresponding type entry.
+
+If the credentialStatus entry is present but does not contain a revocation list supported by the validator, the validator MAY continue validation and SHOULD issue the failure code cawg.ica.revocation.unsupported.
+
+If the credentialStatus entry contains a revocation list that is supported by the validator but is inaccessible (e.g. due to network connection issues), the validator MAY continue validation and SHOULD issue the failure code cawg.ica.revocation.unavailable.
+
+If the validator is able to complete the revocation status check, it should respond as follows:
+
+If the status check indicates that the credential has not been revoked, the validator SHOULD continue validation and SHOULD issue the success code cawg.ica.credential.not_revoked.
+
+If the status check indicates that the credential has been revoked, the validator SHOULD NOT continue validation and MUST issue the failure code cawg.ica.credential.revoked.
+
+This specification recommends that issuers and validators support the BitstringStatusListEntry type as defined by the Bitstring status list specification (in 1.0 draft status as of this writing).
+8.1.5.2.8. Verify the credential’s schema
+The requirements for identity claims aggregation credentials are summarized in a verifiable credentials JSON schema available at https://cawg.io/identity/1.1/ica/schema/vc1.1/ or https://cawg.io/identity/1.1/ica/schema/vc2.0/. It is RECOMMENDED that verifiers use the credentialSchema to validate the structure and data integrity of the verifiable credential.
+
+The schema document makes use of the format JSON Schema keyword. If used, the JSON Schema processor must enable the format usage.
+8.1.5.3. Verify binding to C2PA asset
+The validator SHALL take the content of signer_payload in the identity assertion and perform the transformations from CBOR to JSON as described in Section 8.1.2.6, “Binding to C2PA asset”. The validator SHALL then compare the transformed signer_payload data structure to the c2paAsset field contained within the verifiable credential’s credentialSubject field. If the data structures do not match, the validator MUST issue the failure code cawg.ica.signer_payload.mismatch but MAY continue validation.
+
+8.1.5.4. Verify verified identities
+The validator SHALL inspect the contents of the verifiedIdentities field contained within the verifiable credential’s credentialSubject field. If this field is missing, if it is not a JSON array, or if it is an empty array, the validator MUST issue the failure code cawg.ica.verified_identities.missing but MAY continue validation.
+
+The validator SHALL inspect each entry in the verifiedIdentities array. For each entry, it SHALL verify each of the conditions stated in Section 8.1.2.5, “Verified identities” and issue the failure code cawg.ica.verified_identities.invalid if any condition stated there is unmet.
+
+The validator MAY annotate entries in the verifiedIdentities array according to its own policies regarding trust or validity of each identity.
+
+The C2PA validation status mechanism does not currently define a mechanism for signaling which entry within a given assertion is the cause for a validation status entry. For that reason, it is RECOMMENDED that the validator provide an out-of-band signal which identifies which of the entries in verifiedIdentities is not accepted.
+8.1.5.5. Success code
+If the validator has completed the process without generating any failure codes, it MUST issue the success code cawg.ica.credential_valid for this assertion.
+
+8.1.5.6. Status codes
+Value	Status	Definition
+cawg.ica.credential_valid
+
+Success
+
+The identity claims aggregation credential has passed all known validation requirements.
+
+cawg.ica.invalid_cose_sign1
+
+Failure
+
+The signature value could not be parsed as a valid COSE_Sign1 data structure.
+
+cawg.ica.invalid_alg
+
+Failure
+
+The alg header is missing or references an unsupported signature algorithm.
+
+cawg.ica.invalid_content_type
+
+Failure
+
+The content type header is missing or incorrect.
+
+cawg.ica.invalid_verifiable_credential
+
+Failure
+
+The payload of the COSE_Sign1 data structure is not valid as a Verifiable credential.
+
+cawg.ica.invalid_issuer
+
+Failure
+
+The issuer field in the Verifiable credential is not a DID (W3C decentralized identifier).
+
+cawg.ica.did_unsupported_method
+
+Failure
+
+The issuer DID uses a DID method that is not supported by the validator.
+
+cawg.ica.did_unavailable
+
+Failure
+
+The validator was unable to resolve the DID to its DID document.
+
+cawg.ica.invalid_did_document
+
+Failure
+
+The DID document could not be parsed or did not contain usable public key material.
+
+cawg.ica.untrusted_issuer
+
+Failure
+
+The DID is issued from an untrusted source.
+
+cawg.ica.signature_mismatch
+
+Failure
+
+The signature is not valid for the verifiable credential and the credential issuer’s public key.
+
+cawg.ica.time_stamp.validated
+
+Success
+
+The COSE_Sign1 data structure contained a valid RFC 3161 timestamp.
+
+cawg.ica.time_stamp.invalid
+
+Failure
+
+The COSE_Sign1 data structure contained an invalid RFC 3161 timestamp.
+
+cawg.ica.valid_from.missing
+
+Failure
+
+The Verifiable credential did not contain an issuanceDate or validFrom field.
+
+cawg.ica.valid_from.invalid
+
+Failure
+
+The Verifiable credential’s issuanceDate or validFrom date is invalid.
+
+cawg.ica.valid_until.invalid
+
+Failure
+
+The Verifiable credential’s expirationDate or validUntil date is invalid.
+
+cawg.ica.revocation.unsupported
+
+Failure
+
+The Verifiable credential’s credentialStatus field uses an unsupported revocation method.
+
+cawg.ica.revocation.unavailable
+
+Failure
+
+The Verifiable credential’s revocation status could not be verified (e.g. due to network connection issues).
+
+cawg.ica.credential.not_revoked
+
+Success
+
+The Verifiable credential was verified as not revoked.
+
+cawg.ica.credential.revoked
+
+Failure
+
+The Verifiable credential was found to be revoked.
+
+cawg.ica.signer_payload.mismatch
+
+Failure
+
+The c2paAsset field in the Verifiable credential does not match the signer_payload value in the identity assertion.
+
+cawg.ica.verified_identities.missing
+
+Failure
+
+The verifiedIdentities field in the Verifiable credential is missing.
+
+cawg.ica.verified_identities.invalid
+
+Failure
+
+One or more of the entries in verifiedIdentities is invalid.
+
+8.2. X.509 certificates and COSE signatures
+In some use cases, an actor in the system MAY wish to provide an X.509 certificate to have an organizational or individual identity described by the certificate associated with the list of referenced assertions.
+
+The signer_payload.sig_type value for such an assertion MUST be cawg.x509.cose. The signature value MUST be a COSE signature as described below.
+
+8.2.1. Generating the COSE signature
+To generate the COSE signature for an identity assertion, the steps described in the listed sections of the C2PA technical specification MUST be followed with adaptations as described subsequently:
+
+Section 10.3.2.4, “Signing a claim”
+
+Section 10.3.2.5, “Time-stamps”
+
+An identity assertion MUST NOT contain a v1 time stamp as defined in Section 10.3.2.5.2, “Choosing the payload.”
+An identity assertion generator MAY omit the time stamp from the identity assertion if it expects that a valid time stamp will be added to the C2PA Manifest or as a separate time-stamp manifest or time-stamp assertion.
+
+Section 10.3.2.6, “Credential revocation information”
+
+Section 13.1, “Hashing”
+
+Section 13.2, “Digital signatures”
+
+In each of the above sections, the following changes MUST be applied:
+
+Any reference to the claim MUST be replaced with the CBOR serialization of the signer_payload field from the identity assertion. The signer_payload data structure MUST be serialized as described in Section 4.2.1, “Core Deterministic Encoding,” of RFC 8949: Concise Binary Object Representation. The resulting byte string is presented to the credential holder for signature.
+
+Any reference to the claim generator MUST be replaced with the actor whose X.509 certificate is being used for this assertion.
+
+The identity assertion generator SHALL use an X.509 certificate that complies with the trust model described in Section 8.2.4, “Trust model for X.509 certificates”.
+
+8.2.2. Validating the COSE signature
+To validate the COSE signature for an identity assertion, the steps described in the listed sections of the C2PA technical specification MUST be followed with adaptations as described:
+
+Section 15.5, “Validate the signature.” Disregard the paragraph that starts with “Retrieve the URI reference.” Instead retrieve the COSE signature from the signature field of the identity assertion.
+
+Section 15.6, “Validate the time-stamp”
+
+Section 15.7, “Validate the credential revocation information”
+
+In each of the above sections, the following changes MUST be applied:
+
+Any reference to the claim MUST be replaced with the CBOR serialization of the signer_payload field from the identity assertion.
+
+Any reference to the claim generator MUST be replaced with the actor whose X.509 certificate is being used for this assertion.
+
+A validator MUST NOT issue the status cawg.identity.trusted for an identity assertion unless the X.509 certificate is found to comply with the trust model as described in Section 8.2.4, “Trust model for X.509 certificates”.
+
+To determine the validity of an X.509 certificate in an identity assertion signature, the validator MUST first consider any time stamp contained within the identity assertion. If no such time stamp exists, the validator MUST then evaluate the C2PA claim signature’s time stamp or a subsequent time stamp manifest or time stamp assertion to determine the time of signing.
+
+A validator SHALL consider any v1 time stamp as defined in Section 10.3.2.5.2, “Choosing the payload” to be invalid.
+
+8.2.3. Display of named actor logo
+A CAWG identity assertion consumer MAY wish to display an icon or logo for the named actor. To locate such a graphic, the CAWG identity assertion consumer SHALL look inside the embedded end-entity certificate for a logotype as defined in RFC 9399. If no logotype is found in the certificate, the Manifest Consumer MAY use icons or logos from other sources in an implementation-dependent manner.
+
+A CAWG identity assertion consumer SHOULD NOT display any icon or logo, regardless of source, unless the certificate status is deemed to be trusted, and the implementation is certain that the certificate subject matches the icon or logo.
+A CAWG identity assertion consumer SHOULD be aware of the security risks associated with rendering certain image formats which may trigger unanticipated network traffic.
+8.2.4. Trust model for X.509 certificates
+A validator shall maintain the following information for evaluating CAWG X.509 signers, known as the CAWG trust configuration:
+
+A list of accepted Extended Key Usage (EKU) values. For each accepted EKU value,
+
+A list of accepted Certificate Policy (CP) values.
+
+A list of X.509 certificate trust anchors.
+
+The list of accepted EKUs MUST include id-kp-documentSigning (1.3.6.1.5.5.7.3.36). No certificate policy or trust anchors are required for id-kp-documentSigning at this time.
+
+The requirements for Time stamping authorities and Private credential storage are identical to those stated in the C2PA technical standard. An implementation MAY share the implementation for these two trust lists between C2PA and CAWG implementations.
+
+8.2.4.1. Interim trust model additions
+Time restrictions for this section
+The configuration options described in this section are valid only for identity assertions generated on or before 31 March 2027.
+
+An identity assertion generator MUST include a valid time stamp in the C2PA Manifest or the identity assertion as described in Section 8.2.1, “Generating the COSE signature” to ensure validity under this section.
+
+An identity assertion validator MUST evaluate the following conditions, regardless of time of validation.
+
+An identity assertion validator MUST be configured to accept an X.509 certificate as trusted when all of the following requirements are met:
+
+The time of validation is on or before 31 March 2027 or a trusted time stamp establishes that the identity assertion was issued on or before 31 March 2027.
+
+The EKU id-kp-emailProtection (1.3.6.1.5.5.7.3.4) is used.
+
+One of the following certificate policy IDs is used:
+
+Organization-validated Multipurpose (2.23.140.1.5.2.2)
+
+Organization-validated Strict (2.23.140.1.5.2.3)
+
+Sponsor-validated Multipurpose (2.23.140.1.5.3.2)
+
+Sponsor-validated Strict (2.23.140.1.5.3.3)
+
+Individual-validated Multipurpose (2.23.140.1.5.4.2)
+
+Individual-validated Strict (2.23.140.1.5.4.3)
+
+This list does not include Mailbox-validated or “legacy” certificate purpose OIDs.
+The issuance criteria for such certificates are specified by the CA/Browser Forum in Baseline Requirements for the Issuance and Management of Publicly‐Trusted S/MIME Certificates, version 1.0.11 and may be updated in subsequent versions.
+The lists below MAY include both CA and end-entity certificates. The certificate under validation MUST either be directly included in one of these lists, or have a valid chain of trust to a certificate present in one of these lists.
+
+The Mozilla Root Store with the Email (S/MIME) Trust Bit Enabled. A PEM-encoded version of this list is available at https://ccadb.my.salesforce-sites.com/mozilla/IncludedRootsPEMTxt?TrustBitsInclude=Email.
+
+The IPTC Origin Verified News Publishers List. IPTC publishes separate lists for end-entity certificates and approved trust anchors. A PEM-encoded version of the end-entity certificate list is available at https://trust.iptc.org/end-entity-list.pem. A PEM-encoded version of the trust anchor list is available at https://trust.iptc.org/anchor-list.pem.
+
+9. Trust model
+This section augments Section 14, “Trust model,” of the C2PA technical specification by adding additional trust signals related to the identity of actors involved in creation of a C2PA asset. It does not replace any portion of the C2PA trust model.
+9.1. What does trust mean?
+This section is non-normative.
+
+This specification defines three distinct kinds of trust:
+
+9.1.1. Technical trust
+Technical trust exists if the following requirements are met to the satisfaction of the identity assertion consumer:
+
+Can I prove that the content I’m consuming was signed by a credential associated with a named actor and that the content is unmodified from what the named actor produced at the time it was signed?
+
+Can I trust that the identity signals in the credential point to a named actor?
+
+Do I trust that the identifier for the credential issuer is unique?
+
+The identity assertion should be thought of primarily as providing a framework for establishing technical trust between a named actor and an identity assertion consumer.
+
+9.1.2. Governance trust
+Governance trust exists if the following requirements are met to the satisfaction of the identity assertion consumer:
+
+Am I confident in how the credential(s) were issued to a named actor? Do I understand the level of assurance offered by the credential issuer? Is it sufficient for me to accept the identity of the named actor as valid and meaningful?
+
+Am I confident in how the credential(s) were managed and controlled by the named actor, credential holder, and issuer, and then used to sign the content I’m consuming?
+
+If the issuer is referenced on a trust list, do I trust the governance of that trust list? In other words, do I have confidence in the process by which this issuer was added to and has remained on the trust list?
+
+Software tools supporting identity assertion consumers can assist in establishing governance trust by making well-informed choices about roots of trust.
+
+9.1.3. Reputation trust
+Reputation trust exists if the following requirements are met to the satisfaction of the identity assertion consumer:
+
+Am I confident that the named actor will produce valuable content in good faith?
+
+Does the named actor have a reputation and legitimacy that I can rely on?
+
+While reputation trust requires technical trust and governance trust to be established in order to evaluate it meaningfully, these criteria are largely subjective and thus outside the scope of this specification. Also, unlike technical trust, the evaluation of reputation trust is likely to evolve over time as the identity assertion consumer gains experience with and learns more about the named actor.
+
+9.2. Technical trust introduction
+This section is non-normative.
+
+The relationships required to establish technical trust are typically described using a trust diamond as shown in the following diagram:
+
+Basic trust triangle
+Figure 8. Basic trust diamond
+The four roles depicted can each be performed by a human, organization, machine, or some combination thereof. A governing authority sets the rules over the issuance of conformant identities from credential issuers to credential holders and allows credential issuers to appear on a trust list after it satisfies the conformance of its rules within its governance framework. A credential holder establishes a relationship with a credential issuer. If the issuer trusts the credential holder, it will then issue a digital credential which makes statements about the named actor (which may or may not be the same actor as the credential holder) and is signed by the issuer.
+
+Later, the credential holder can then present this credential to a verifier (also often known as a “relying party”). If the verifier has an existing trust relationship with the credential issuer, then the verifier can choose to trust the credential, after checking that credential was issued by an issuer appearing on the trust list, and the statements made within it.
+
+This pattern can be repeated if there is not a direct trust relationship between the verifier and issuer. The issuer itself might have a credential that is issued by another issuer that is known to the verifier as shown in the following diagram:
+
+Transitive trust triangle
+Figure 9. Transitive trust triangle
+In this scenario, issuer 2 is playing a dual role as credential holder and credential issuer. The verifier does not have a direct relationship with the issuer of the credentials that were presented (issuer 2). However, it can inspect issuer 2’s credentials and find that they were issued by issuer 1, with whom it does have a direct relationship. Based on the nature of that relationship, it may choose to extend transitive trust to issuer 2 and thus to the credential that issuer 2 issued.
+
+Web browsers provide a well-known example of transitive trust. Browsers have direct relationships with relatively few root trust anchors. Those anchors, known as root certificate authorities, in turn issue credentials to certificate authorities who then issue credentials to individual web site operators who then sign the content presented to a browser. This pattern may be repeated with multiple layers of intermediate certificate authorities. The web browser evaluates this entire chain of credentials when deciding whether to present a web site as trusted or not.
+
+9.3. Trust scenarios in identity assertion
+The signature in an identity assertion could be considered as a new credential documenting the relationship between named actor and C2PA asset, which will be referred to in this section as an asset-specific credential.
+
+“Content Credential” is a trademarked term that refers to C2PA Manifests and MUST NOT be used in reference to identity assertion signatures.
+For each form of credential that an identity assertion consumer is prepared to accept, it SHOULD maintain:
+
+a list of trust relationships that it is prepared to accept when interpreting any identity assertion, and
+
+one or more mechanisms to check for credentials that have been revoked by the issuer.
+
+There are a few possible relationships between the implementation of the identity assertion, named actor, and credential issuer, as documented in the following subsections.
+
+The trust decisions described in the scenarios should only be evaluated once the identity assertion and the signature material within have been successfully validated as described in Section 7, “Validating the identity assertion”.
+The trust decision can result in one of three descriptions of the named actor:
+
+Trusted: The identity assertion consumer can verify a trust relationship to the named actor through its established roots of trust. The identity assertion consumer found no evidence that the credential was revoked at the time the identity assertion was created.
+
+Well-formed: The identity assertion consumer can not verify a trust relationship to the named actor. The identity assertion consumer found no evidence that the credential was revoked at the time the identity assertion was created.
+
+Revoked: The credential used for signing the identity assertion had been revoked at the time the identity assertion was created.
+
+9.3.1. Named actor as issuer
+In this scenario, the credential holder possesses a credential that describes the named actor and is provisioned with the ability to generate digital signatures on the named actor’s behalf.
+
+This scenario is implicit in the X.509 certificate-based workflow as described in Section 8.2, “X.509 certificates and COSE signatures”. Other credential types MAY also follow this scenario.
+
+The credential holder uses this signature authority directly to generate the asset-specific credential, as depicted in the following diagram, which is non-normative:
+
+Named actor as issuer
+Figure 10. Named actor as issuer
+In this scenario, the identity assertion consumer SHOULD make its trust decision based on the following predicates:
+
+Is there a direct trust relationship with the named actor? If so, the identity assertion SHOULD be treated as trusted.
+
+Is there a transitive trust relationship with the named actor via its credential issuer? (In other words, does the identity assertion consumer trust the credential issuer to issue valid signature credentials?)
+
+If so, was the named actor’s credential revoked at the time the identity assertion was signed? If so, the identity assertion SHOULD be treated as revoked.
+
+If the transitive trust relationship exists and the credential has not been revoked, the identity assertion SHOULD be treated as trusted.
+
+If neither relationship can be demonstrated, the identity assertion SHOULD be treated as well-formed.
+
+Any available information about credential revocation SHOULD be included in the identity assertion consumer’s report about the identity assertion regardless of trusted or untrusted status.
+The direct trust relationship case is possible, but relatively uncommon.
+9.3.2. Named actor without signature authority
+In this scenario, the credential holder possesses a credential that describes the named actor but does not have the ability to generate digital signatures on the named actor’s behalf.
+
+In this scenario, the hardware or software implementation that is generating the identity assertion MAY request a summary of the named actor’s credential from the credential holder, and gather that information into the identity assertion, which it will then sign using its own credentials.
+
+Example using W3C verifiable credentials
+This example, which is non-normative, depicts a possible workflow for this scenario. In this scenario, the credential holder wishes to use a W3C verifiable credential held in a wallet to generate an identity assertion on behalf of the credential’s named actor.
+
+In this example, the wallet is prepared to selectively disclose portions of the credential via W3C verifiable presentation, but can neither reveal the entire credential nor issue other forms of signature.
+
+Credential holder
+Wallet
+Identity assertion generator
+Credential holder
+Wallet
+Identity assertion generator
+Create signer_payload
+Generate new asset-specific
+credential using VP content
+Presentation request
+including signer_payload
+Request consent for presentation
+Consent granted
+Verifiable presentation
+In this scenario, the issuer of the asset-specific credential is not the credential holder but the actor that is generating the identity assertion, as depicted in the following diagram, which is non-normative:
+
+Named actor without signature authority
+Figure 11. Named actor without signature authority
+In this scenario, the identity assertion consumer SHOULD make its trust decision based on the following predicates:
+
+Does the identity assertion consumer trust the identity assertion generator to request a credential summary from the credential holder and accurately reflect that credential summary into the identity assertion?
+
+Is there a direct trust relationship with the identity assertion generator? If so, proceed to step 2.
+
+Is there a transitive trust relationship with the identity assertion generator via its credential issuer? (In other words, does the identity assertion consumer trust the identity assertion generator’s credential issuer to issue valid signature credentials?)
+
+If so, was the identity assertion generator’s credential revoked at the time the identity assertion was signed? If so, do not proceed. The identity assertion SHOULD be treated as revoked.
+
+If the transitive trust relationship exists and the credential has not been revoked, proceed to step 2.
+
+If neither relationship can be demonstrated, do not proceed. The identity assertion SHOULD be treated as well-formed.
+
+Does the identity assertion consumer trust the named actor’s credential issuer to issue valid credentials?
+
+Is there a direct trust relationship with the named actor’s credential issuer? If so, proceed to step 3.
+
+Is there a transitive trust relationship with the named actor’s credential issuer via its credential issuer? (In other words, does the identity assertion consumer trust the named actor’s credential issuer to issue valid credentials?) If so, proceed to step 3.
+
+If neither relationship can be demonstrated, do not proceed. The identity assertion SHOULD be treated as well-formed.
+
+Was the named actor’s credential revoked at the time the identity assertion was signed?
+
+If so, the identity assertion SHOULD be treated as revoked.
+
+If no such revocation has been issued, the identity assertion SHOULD be treated as trusted.
+
+Any available information about credential revocation SHOULD be included in the identity assertion consumer’s report about the identity assertion regardless of trusted or untrusted status.
+9.4. Threats to trust model
+This section is non-normative.
+
+This section enumerates a number of potential attacks on the identity assertion trust model. If concrete guidance to mitigate or prevent a specific attack is available, that guidance should be incorporated as specific normative requirements elsewhere in this specification and referenced here.
+
+9.4.1. Replay attacks
+An attacker could attempt to extract a valid identity assertion out of one C2PA asset and embed it in a new C2PA asset of an attacker’s choosing without causing a validation error. This scenario could allow an attacker to falsely attribute the new C2PA asset to a victim’s identity without their consent or knowledge. If the attacker’s C2PA asset is controversial or illegal, then falsely attributing it to a victim’s identity could result in severe consequences for the victim. The system must ensure that an attacker can not apply an existing identity assertion to a different C2PA asset.
+
+To prevent this attack, we require that a valid identity assertion contain a signer_payload.referenced_assertions which includes a hard binding assertion that properly describes the C2PA asset. A compliant identity assertion consumer should detect that the hard binding assertion referenced by the original identity assertion does not match the attacker’s C2PA asset and fail validation.
+
+9.4.2. Parsing and validation errors
+Any content including, but not limited to the named actor’s identity, could be subject to a number of parsing or validation attacks:
+
+Injection of code (HTML, JavaScript, etc.) into a text field so that the attacker can attempt to control what is displayed to the end user. Does the specification support markup in the text fields? Should all fields be considered unicode strings?
+
+Text fields of excessive length: These can cause buffer overflows or could be an attempt to "push" trusted UI indicators out of the rendered view of the user. Should the specification place an upper bound of the length of given fields?
+
+Injection of special characters: These can be truncation attacks. For instance, if the UI parser is written in C, then an attacker might try to inject a null byte to cause discrepancies in the code about what should be displayed. Are there any special characters necessitated by the specification that need to be escaped before being placed into the text field of an assertion?
+
+The effectiveness of such attacks will necessarily be dependent on the language and other related development tooling in use for any given implementation. Beyond reminding implementers that parsing and validation errors are a likely attack surface, it is outside the scope of this specification to provide language-specific guidance.
+
+9.4.3. Name collisions, homoglyph attacks, and typo-squatting attacks
+An attacker could make use of visually-similar Unicode characters to mislead an end user into accepting a mistaken assertion of identity on behalf of a specific named actor. Such attacks are common in phishing and impersonation attacks conducted on domain names and social media.
+
+Similarly, it is likely that two or more named actors may legitimately have the same or very similar names. Whether legitimate or not, similar names may cause confusion among identity assertion consumers absent other signals that disambiguate specific individuals or organizations. If anonymous identities are supported, identity assertions should also contain signals to disambiguate between anonymous identities.
+
+The Creator Assertions Working Group supports the principle of Universal Acceptance as described by ICANN. No mitigation for the attacks described in this section should result in preferential treatment for identifiers in any language or script system over any other language or script system.
+Implementers are encouraged to apply one or more of the following approaches to mitigate this potential attack:
+
+Credential issuers are encouraged to verify proposed names carefully to avoid malicious use of names. Intermediate authorities (trust lists, intermediate CAs, etc.) are encouraged to require such verification as part of their governance terms.
+
+Software tools that support identity assertion consumers are encouraged to maintain a list of trust anchors that have well-established governance terms designed to avoid the inclusion of inadvertently or maliciously misleading identity credentials and to reference those roots of trust in their user experience.
+
+Software tools that support identity assertion consumers are encouraged to maintain lists of known named actors via unique identifiers available with each credential type rather than the human-readable display names.
+
+Software tools that support identity assertion consumers are encouraged to make visible the evaluation of an identity assertion as trusted, well-formed, or invalid.
+
+Software tools that support identity assertion consumers are encouraged to display additional detail about the named actor, such as the unique identifiers behind the credential, upon user request.
+
+Future versions of this specification will likely allow linking independent verifiable trust signals (social accounts, web sites, etc.). As those become available, named actors are encouraged to include those signals and identity assertion consumers are encouraged to verify those signals.
+
+9.4.4. Revocation of credential
+There are numerous scenarios which may result in the credential issued to a credential holder being revoked. Some are adverse, such as credential compromise or acting in bad faith. Other scenarios are routine, such as changes to the name, address, or other identifying information contained within the credentials.
+
+The identity assertion consumer should make a best effort to verify the status of the credential as of the time of identity assertion creation. The exact mechanism will vary based on the credential type and will be specified in the appropriate subsection of Section 8, “Credentials, signatures, and validation methods”. If a credential is found to be revoked at that time, this information should be prominently displayed in any user experience regarding the identity assertion. Absent specific information as to the cause for revocation, a identity assertion consumer should not assume that a revocation is an indication of an adverse event.
+
+Software tools that support Identity assertion consumers are encouraged to be mindful of harms or risks – such as generating network traffic that may indicate interest in particular content – that may accrue to the identity assertion consumer in the process of making online inquiries about such status.
+
+9.4.5. Compromise of private key material
+In practice, the credential holder’s signing keys will be issued to systems that perform identity assertion signing operations. These systems may make these operations available to end users and/or be deployed to user-owned platforms (e.g., mobile phones). Issuance or disclosure of signing keys to malicious actors enables attackers to create claim signatures on arbitrary assets using the compromised identity. The resulting identity assertions will be valid in terms of the identity assertion specification, but effectively allow for spoofing identity.
+
+It is therefore important that systems that manage identity assertion signing keys adhere to security and key management best practices. This includes leveraging platform-specific features (e.g., hardware security modules and cloud key management services), minimizing key reuse, and revoking keys when compromise is suspected. For more information on key management, see the NIST Key Management Guidelines.
+
+Some identity assertion generation and signing systems may be exposed to untrusted users. Exploitation or misuse of these systems may allow attackers to create identity assertion signatures on arbitrary assets using identities provided by the system. The resulting identity assertions will be valid in terms of the identity assertion specification, but effectively allow for spoofing identity. The impact of such an attack may be amplified if identities are shared between users, and/or if the attack goes undetected for an extended period of time.
+
+Identity assertion generation and signing systems should consider industry best practices for information security, secure development and operation, and anti-abuse practices, including leveraging available platform-specific features for deployment (e.g., Android SafetyNet, Apple DeviceCheck and AppAttest).
+
+Capture devices, such as non-smartphone cameras, often do not have a mechanism for restricting access to specific users. It is recommended that such devices should not hold credentials for named actors and should not generate identity assertion unless they can access more secure credential-access mechanisms such as a digital wallet.
+
+9.4.6. Tampering with identity assertion content
+An attacker could attempt to alter the content of an identity assertion to substitute different credentials or alter the attestations included in signer_payload in order to create a misleading of the named actor or the C2PA asset.
+
+A compliant identity assertion consumer should validate the signature field of the identity assertion. If the content of signer_payload has been altered, the signature should not match and the identity assertion consumer should fail validation in that case.
+
+The signature from the claim generator provides an additional level of tamper evidence. In the event an attacker substitutes a new identity assertion which contains a new signature that is valid, the hash reference from the C2PA claim should still mismatch. A compliant C2PA Manifest Consumer should fail validation in that case. When validation of a C2PA Manifest has failed, a compliant identity assertion consumer should not attempt to interpret the content of any identity assertion in that C2PA Manifest.
+
+9.4.7. Re-signing by an adversarial claim generator
+An attacker could take a valid C2PA asset and create a new C2PA Manifest with a new signature from a new claim generator that alters the context that was anticipated by the original credential holder when signing the identity assertion.
+
+Example 7. New context introduced by adversarial claim generator
+This diagram builds upon Example 1, “Trust signal scope with one identity assertion”, to show how an adversarial claim generator could alter the context for the identity assertion.
+
+Adversarial claim generator example
+Figure 12. Re-contextualization attack
+In this example, the attacker has used a new claim generator’s signature to re-contextualize the original C2PA asset without the original credential holder’s knowledge.
+
+Scope of attack surface
+In this scenario, the attacker could:
+
+Remove any C2PA assertions not referenced in the identity assertion (A3 in this example).
+
+Introduce new C2PA assertions (A4 and A5 in this example).
+
+Substitute a new claim generator that is unknown to the credential holder.
+
+The attacker could not:
+
+Modify the asset content (because the hard binding assertion would not match the new asset).
+
+Modify any of the C2PA assertions referenced in the identity assertion (A1 or A2 in this example).
+
+A credential holder can prevent these attacks by using one or more of the following optional mechanisms in signer_payload which are intended to limit the content of the enclosing C2PA Manifest:
+
+expected_partial_claim, which describes the content of the expected C2PA claim in which the identity assertion appears.
+
+expected_claim_generator, which describes the X.509 certificate of the expected C2PA claim generator.
+
+expected_countersigners, which describes the signing credential(s) of the expected named actors for other identity assertions in the same C2PA Manifest.
+
+See Section 5.1, “Overview”, for complete description of these mechanisms.
+
+10. User experience
+This section is non-normative.
+
+10.1. Approach
+The Creator Assertions Working Group intends, in a forthcoming document, to provide clear recommendations and guidance for implementers of identity-based provenance user experiences (UX). Similar to the C2PA’s User experience guidance for implementers, CAWG UX recommendations aim to define best practices for presenting CAWG identity assertions within a C2PA Manifest. The recommendations strive to describe standard, readily-recognizable experiences that:
+
+provide named actors a means to express identity assertions about a C2PA asset, and
+
+provide identity assertion consumers with additional information about the C2PA asset they are experiencing, thereby empowering them to understand who is involved in its creation.
+
+CAWG UX recommendations should adhere to the same principles and levels of information disclosure outlined in the C2PA UX Guidance.
+
+10.2. Public review, feedback, and evolution
+Developing these recommendations is an ongoing process that involves diverse stakeholders, with the results balancing uniformity and familiarity with utility and flexibility for users across contexts, platforms, and devices. Feedback, review, user testing, and ongoing evolution are key requirements for success. The recommendations will therefore be an evolving document, informed by real-world experiences deploying CAWG-enabled C2PA Manifests across a wide variety of applications and scenarios. These recommendations will be provided as a companion document.
+
+Appendix A: Version history
+This section is non-normative.
+
+31 July 2025
+
+Started 1.2-draft version of this specification, derived from the 1.1 version of this specification. (Version history)
+
+13 August 2025
+
+Fix an incorrect CDDL definition. Add lint tools to prevent further such errors.
+
+27 August 2025
+
+Allow referenced assertions to refer to assertions in ingredient manifests. This makes the identity assertion compatible with C2PA update manifests.
+
+16 October 2025
+
+Updated links to point to version 2.2 of C2PA Content Credentials specification.
+
+27 November 2025
+
+Add trust model guidance for X.509 version of identity assertion.
+
+Add guidance for display of named actor logo.
+
+Working group approved as 1.2 final.
+
+15 December 2025
+
+Rework definition of verifiable identifier.
+
+Ratified by DIF Steering Committee.
