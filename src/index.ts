@@ -136,13 +136,6 @@ function ensureMarkdownManifestPlaceholder(asset: JsoncAssetInput): Uint8Array {
 }
 
 /**
- * Calls the Rust hello_world function and returns the result.
- */
-export function sayHello(): string {
-  return wasm.hello_world();
-}
-
-/**
  * Verifies a C2PA asset.
  * 
  * @param format The format of the asset (e.g., 'application/pdf').

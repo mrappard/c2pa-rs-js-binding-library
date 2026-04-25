@@ -5,6 +5,7 @@ import {
   prepareIdentityAssertion,
   finalizeIdentityAssertion,
   signIdentityAssertionPayloadX509,
+  signAsset,
   signAssetWithX509Identity,
   verifyAsset,
   verifyIdentityAssertions,
@@ -151,4 +152,63 @@ test('finalizeIdentityAssertion completes the two-call external signing flow', a
   expect(identityAssertions[0].validated).toBe(true);
   expect(identityAssertions[0].data.signer_payload.sig_type).toBe('cawg.x509.cose');
   expect(identityAssertions[0].data.signature_info.issuer).toBeDefined();
+});
+
+// ── assertion_salt tests ─────────────────────────────────────────────────────
+//
+// assertion_salt affects the JUMBF claim's assertion HashedURIs (the hash of
+// each assertion box includes the salt). It does NOT feed into
+// signer_payload.referenced_assertions (those URIs come from the hard-binding
+// c2pa.hash.data assertion, which uses DefaultSalt::default() independently).
+// The right observable is therefore the manifest (JUMBF) bytes.
+
+const FIXED_SALT = Array.from({ length: 16 }, (_, i) => i + 1); // [1..16]
+// Stable IDs so both signing calls produce the same JUMBF when the salt matches
+const STABLE_INSTANCE_ID = 'xmp:iid:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+const STABLE_LABEL       = 'urn:c2pa:bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
+
+function makeStableManifest(title, salt) {
+  const m = {
+    ...makeManifest(title),
+    instance_id: STABLE_INSTANCE_ID,
+    label: STABLE_LABEL,
+  };
+  if (salt !== undefined) m.assertion_salt = salt;
+  return m;
+}
+
+test('assertion_salt: same salt produces identical manifest bytes', async () => {
+  const { signcert, pkey } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+
+  const r1 = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
+  const r2 = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
+
+  // Manifest (JUMBF) bytes must be identical: same salt → same assertion hashes
+  expect(Array.from(r1.manifest)).toEqual(Array.from(r2.manifest));
+});
+
+test('assertion_salt: different salts produce different manifest bytes', async () => {
+  const { signcert, pkey } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+
+  const saltA = Array.from({ length: 16 }, () => 0xAA);
+  const saltB = Array.from({ length: 16 }, () => 0xBB);
+
+  const r1 = await signAsset('image/png', assetData, makeStableManifest('test.png', saltA), signcert, pkey, 'es256');
+  const r2 = await signAsset('image/png', assetData, makeStableManifest('test.png', saltB), signcert, pkey, 'es256');
+
+  // Different salts → different assertion hashes in claim → different JUMBF bytes
+  expect(Array.from(r1.manifest)).not.toEqual(Array.from(r2.manifest));
+});
+
+test('assertion_salt: signing and verification succeeds with a fixed salt', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+
+  const result = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
+  expect(result.signedAsset).toBeDefined();
+
+  const outcome = await verifyAsset('image/png', result.signedAsset, [certPem]);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
 });

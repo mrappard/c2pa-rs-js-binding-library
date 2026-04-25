@@ -16,11 +16,6 @@ use wasm_bindgen::prelude::*;
 const CREDENTIALS_ASSERTION_LABEL: &str = "io.vaultie.credentials";
 const IDENTITY_ASSERTION_PREFIX: &str = "cawg.identity";
 
-#[wasm_bindgen]
-pub fn hello_world() -> String {
-    "Hello from Rust with C2PA!".into()
-}
-
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, IntoStaticStr, Tsify)]
 #[tsify(from_wasm_abi)]
 pub enum SupportedFormat {
