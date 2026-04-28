@@ -82,6 +82,15 @@ test('sign and verify an asset with cawg.metadata', async () => {
   expect(outcome.manifests.length).toBeGreaterThan(0);
 
   const activeManifest = outcome.manifests[0];
+  expect(activeManifest.claimGenerator !== undefined).toBe(true);
+  if (activeManifest.claimGenerator === null) {
+    expect(activeManifest.claimGeneratorInfo).toBeDefined();
+    expect(activeManifest.claimGeneratorInfo).not.toBeNull();
+    expect(activeManifest.claimGeneratorInfo[0].name).toBe('test_generator');
+  } else {
+    expect(typeof activeManifest.claimGenerator).toBe('string');
+  }
+
   const metadataAssertion = getAssertionValue(activeManifest.assertions, 'cawg.metadata');
 
   expect(metadataAssertion).toBeDefined();

@@ -178,6 +178,47 @@ export function cleanAsset(
   return wasm.clean_asset(format, asset);
 }
 
+export type IngredientDescriptor = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  title: string;
+  /** Defaults to `"componentOf"` when omitted. */
+  relationship?: 'parentOf' | 'componentOf' | 'inputTo';
+};
+
+export async function signAssetWithIngredients(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  ingredients: IngredientDescriptor[],
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_with_ingredients(
+    format, asset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
+  );
+}
+
+export async function signAssetWithParentIngredient(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  parentFormat: wasm.SupportedFormat,
+  parentAsset: Uint8Array,
+  parentTitle: string,
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_with_parent_ingredient(
+    format, asset, manifestDefinition, signcert, pkey, alg,
+    parentFormat, parentAsset, parentTitle, tsaUrl
+  );
+}
+
 export async function signAssetWithThumbnail(
   format: wasm.SupportedFormat,
   asset: Uint8Array,

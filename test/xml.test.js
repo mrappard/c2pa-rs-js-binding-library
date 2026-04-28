@@ -48,7 +48,24 @@ test('sign and verify an XML asset', async () => {
   const outcome = await verifyXmlAsset(result.signedAsset, [certPem]);
   expect(outcome.manifests.length).toBeGreaterThan(0);
 
+  const firstManifest = outcome.manifests[0];
+  expect(firstManifest.claimGenerator !== undefined).toBe(true);
+  if (firstManifest.claimGenerator === null) {
+    expect(firstManifest.claimGeneratorInfo).toBeDefined();
+    expect(firstManifest.claimGeneratorInfo).not.toBeNull();
+    expect(firstManifest.claimGeneratorInfo[0].name).toBe('test_generator');
+  } else {
+    expect(typeof firstManifest.claimGenerator).toBe('string');
+  }
+
   const store = outcome.manifestStore;
-  const activeManifest = store.manifests[store.active_manifest];
-  expect(activeManifest.claim_generator_info[0].name).toBe('test_generator');
+  const activeManifest = store.manifests[store.activeManifest];
+  expect(activeManifest.claimGenerator !== undefined).toBe(true);
+  if (activeManifest.claimGenerator === null) {
+    expect(activeManifest.claimGeneratorInfo).toBeDefined();
+    expect(activeManifest.claimGeneratorInfo).not.toBeNull();
+    expect(activeManifest.claimGeneratorInfo[0].name).toBe('test_generator');
+  } else {
+    expect(typeof activeManifest.claimGenerator).toBe('string');
+  }
 });

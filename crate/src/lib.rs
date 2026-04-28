@@ -69,6 +69,7 @@ pub struct RecognizedManifest {
     pub id: String,
     pub title: Option<String>,
     pub claim_generator: Option<String>,
+    pub claim_generator_info: Option<serde_json::Value>,
     pub instance_id: String,
     pub signature_info: Option<serde_json::Value>,
     pub assertions: HashMap<String, serde_json::Value>,
@@ -78,6 +79,7 @@ pub struct RecognizedManifest {
 }
 
 #[derive(Serialize, Tsify)]
+#[serde(rename_all = "camelCase")]
 pub struct ManifestJson {
     pub claim_generator: Option<String>,
     pub claim_generator_info: Option<serde_json::Value>,
@@ -87,6 +89,7 @@ pub struct ManifestJson {
 }
 
 #[derive(Serialize, Tsify)]
+#[serde(rename_all = "camelCase")]
 pub struct ManifestStoreJson {
     pub active_manifest: Option<String>,
     pub manifests: HashMap<String, ManifestJson>,
@@ -437,6 +440,146 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
     let manifest = builder
         .sign(&signer, format.into(), &mut source, &mut dest)
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: dest.into_inner(),
+        manifest,
+    })
+}
+
+/// Signs a C2PA asset that was derived from a parent ingredient.
+///
+/// The parent asset's embedded manifest (if any) is read and included as ingredient data
+/// in the new manifest, creating a provenance chain between the two assets.
+/// `parent_title` is the human-readable name shown for the ingredient (typically a filename).
+#[wasm_bindgen]
+pub async fn sign_asset_with_parent_ingredient(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    parent_format: SupportedFormat,
+    parent_asset: Vec<u8>,
+    parent_title: String,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let ingredient_json = serde_json::json!({
+        "title": parent_title,
+        "relationship": "parentOf"
+    })
+    .to_string();
+
+    let parent_format_str: &str = parent_format.into();
+    builder
+        .add_ingredient_from_stream(
+            ingredient_json,
+            parent_format_str,
+            &mut Cursor::new(parent_asset),
+        )
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset);
+    let mut dest = Cursor::new(Vec::new());
+
+    let manifest = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: dest.into_inner(),
+        manifest,
+    })
+}
+
+/// A single ingredient descriptor passed from JavaScript.
+#[derive(Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+#[tsify(from_wasm_abi)]
+pub struct IngredientDescriptor {
+    /// MIME type of the ingredient asset (e.g. `"md"`, `"image/jpeg"`).
+    pub format: SupportedFormat,
+    /// Raw bytes of the ingredient asset.
+    pub asset: serde_bytes::ByteBuf,
+    /// Human-readable title (typically a filename).
+    pub title: String,
+    /// C2PA relationship. Allowed values: `"parentOf"`, `"componentOf"`, `"inputTo"`.
+    /// Defaults to `"componentOf"` when omitted.
+    #[serde(default = "default_relationship")]
+    pub relationship: String,
+}
+
+fn default_relationship() -> String {
+    "componentOf".to_string()
+}
+
+/// Signs a C2PA asset with one or more ingredients.
+///
+/// Each entry in `ingredients` must supply `format`, `asset` (bytes), `title`, and optionally
+/// `relationship` (`"parentOf"`, `"componentOf"`, or `"inputTo"`; defaults to `"componentOf"`).
+/// At most one ingredient should use `"parentOf"`.
+#[wasm_bindgen]
+pub async fn sign_asset_with_ingredients(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    ingredients: JsValue,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let descriptors: Vec<IngredientDescriptor> = serde_wasm_bindgen::from_value(ingredients)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    for descriptor in descriptors {
+        let ingredient_json = serde_json::json!({
+            "title": descriptor.title,
+            "relationship": descriptor.relationship,
+        })
+        .to_string();
+
+        let format_str: &str = descriptor.format.into();
+        builder
+            .add_ingredient_from_stream(
+                ingredient_json,
+                format_str,
+                &mut Cursor::new(descriptor.asset.into_vec()),
+            )
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    }
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset);
+    let mut dest = Cursor::new(Vec::new());
+
+    let manifest = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     Ok(C2PASignResult {
         signed_asset: dest.into_inner(),
@@ -876,7 +1019,8 @@ async fn internal_verify(
             RecognizedManifest {
                 id: label.to_owned(),
                 title: manifest.title().map(ToOwned::to_owned),
-                claim_generator: manifest.claim_generator.clone(),
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
                 instance_id: manifest.instance_id().to_owned(),
                 signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
                 assertions,

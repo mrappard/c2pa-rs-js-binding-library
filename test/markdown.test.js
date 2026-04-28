@@ -52,10 +52,34 @@ test('sign and verify a Markdown asset', async () => {
   const outcome = await verifyMarkdownAsset(result.signedAsset, [certPem]);
   expect(outcome.manifests.length).toBeGreaterThan(0);
 
+  // Check the first manifest in the array
+  const firstManifest = outcome.manifests[0];
+  
+  // Verify claimGeneratorInfo is present and correct (the main requirement)
+  expect(firstManifest.claimGeneratorInfo).toBeDefined();
+  expect(firstManifest.claimGeneratorInfo).not.toBeNull();
+  expect(firstManifest.claimGeneratorInfo[0].name).toBe('test_generator');
+
+  // Verify claimGenerator (can be null in v2, but must be defined)
+  expect(firstManifest.claimGenerator !== undefined).toBe(true);
+  if (firstManifest.claimGenerator !== null) {
+    expect(typeof firstManifest.claimGenerator).toBe('string');
+  }
+  
   const store = outcome.manifestStore;
-  const activeManifest = store.manifests[store.active_manifest];
+  const activeManifest = store.manifests[store.activeManifest];
   expect(activeManifest.title).toBe('hello.md');
-  expect(activeManifest.claim_generator_info[0].name).toBe('test_generator');
+  
+  // Verify claimGeneratorInfo in the manifest store
+  expect(activeManifest.claimGeneratorInfo).toBeDefined();
+  expect(activeManifest.claimGeneratorInfo).not.toBeNull();
+  expect(activeManifest.claimGeneratorInfo[0].name).toBe('test_generator');
+
+  // Verify claimGenerator in the manifest store
+  expect(activeManifest.claimGenerator !== undefined).toBe(true);
+  if (activeManifest.claimGenerator !== null) {
+    expect(typeof activeManifest.claimGenerator).toBe('string');
+  }
 });
 
 test('clean a signed Markdown asset removes the C2PA manifest', async () => {

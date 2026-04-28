@@ -46,6 +46,14 @@ test('sign a JPEG with a JPEG thumbnail and verify thumbnail is present', async 
   expect(outcome.manifests.length).toBeGreaterThan(0);
 
   const manifest = outcome.manifests[0];
+  expect(manifest.claimGenerator !== undefined).toBe(true);
+  if (manifest.claimGenerator === null) {
+    expect(manifest.claimGeneratorInfo).toBeDefined();
+    expect(manifest.claimGeneratorInfo).not.toBeNull();
+    expect(manifest.claimGeneratorInfo[0].name).toBe('test_generator');
+  } else {
+    expect(typeof manifest.claimGenerator).toBe('string');
+  }
   expect(manifest.thumbnail).toBeDefined();
   expect(manifest.thumbnail.format).toBe('image/jpeg');
   expect(manifest.thumbnail.data.length).toBeGreaterThan(0);
@@ -73,6 +81,14 @@ test('sign a PNG with a PNG thumbnail and verify thumbnail is present', async ()
   expect(outcome.manifests.length).toBeGreaterThan(0);
 
   const manifest = outcome.manifests[0];
+  expect(manifest.claimGenerator !== undefined).toBe(true);
+  if (manifest.claimGenerator === null) {
+    expect(manifest.claimGeneratorInfo).toBeDefined();
+    expect(manifest.claimGeneratorInfo).not.toBeNull();
+    expect(manifest.claimGeneratorInfo[0].name).toBe('test_generator');
+  } else {
+    expect(typeof manifest.claimGenerator).toBe('string');
+  }
   expect(manifest.thumbnail).toBeDefined();
   expect(manifest.thumbnail.format).toBe('image/png');
   expect(manifest.thumbnail.data.length).toBeGreaterThan(0);
