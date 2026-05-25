@@ -41,7 +41,8 @@
     "build:package": "node ./script/preparePublish.mjs",
     "build": "npm run build:wasm && npm run build:ts && npm run build:package",
     "test": "npm run test:wasm && vitest run",
-    "manifest:png": "node --input-type=module -e \"import('./script/outputManifestFromJpg.ts')\"",
+    "manifest:png": "node --input-type=module -e \"import('./script/outputManifestFromPng.ts')\"",
+    "manifest:jpg": "node --input-type=module -e \"import('./script/outputManifestFromJpg.ts')\"",
     "manifest:structured-text": "node --input-type=module -e \"import('./script/outputManifestFromStructuredText.ts')\"",
     "prepack": "npm run build"
   },

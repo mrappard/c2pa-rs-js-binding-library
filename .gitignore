@@ -14,6 +14,9 @@ yarn-error.log*
 # WebAssembly (wasm-pack)
 /pkg/
 
+# Script output
+script/output/
+
 # OS/IDEs
 .DS_Store
 .vscode/

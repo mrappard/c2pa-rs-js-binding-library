@@ -32,22 +32,19 @@ function mapToObject(value: any): any {
 }
 
 async function run() {
-  const jpegDir = join(__dirname, '../test/assets/image/good/jpeg');
-  const files = readdirSync(jpegDir).filter(f => {
-    const ext = extname(f).toLowerCase();
-    return ext === '.jpg' || ext === '.jpeg';
-  });
-
+  const pngDir = join(__dirname, '../test/assets/image/good/png');
   const outputDir = join(__dirname, 'output');
 
+  const files = readdirSync(pngDir).filter(f => extname(f).toLowerCase() === '.png');
+
   for (const file of files) {
-    const filePath = join(jpegDir, file);
+    const filePath = join(pngDir, file);
     const buffer = readFileSync(filePath);
     const assetData = new Uint8Array(buffer);
 
     console.log(`Verifying: ${file}`);
     try {
-      const outcome = await verifyAsset('image/jpeg', assetData, []);
+      const outcome = await verifyAsset('image/png', assetData, []);
       const name = basename(file, extname(file));
       const outPath = join(outputDir, `${name}.json`);
 
