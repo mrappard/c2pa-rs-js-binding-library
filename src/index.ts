@@ -171,6 +171,14 @@ export async function verifyIdentityAssertions(
   return wasm.verify_identity_assertions(format, asset, trustedCertificates) as Promise<IdentityAssertionVerificationOutcome>;
 }
 
+export async function getResource(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  uri: string
+): Promise<Uint8Array> {
+  return wasm.get_resource(format, asset, uri);
+}
+
 export function cleanAsset(
   format: wasm.SupportedFormat,
   asset: Uint8Array

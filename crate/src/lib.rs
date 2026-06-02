@@ -956,6 +956,26 @@ pub async fn verify_identity_assertions(
 }
 
 #[wasm_bindgen]
+pub async fn get_resource(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    uri: String,
+) -> Result<Vec<u8>, JsValue> {
+    let context = Context::new();
+    let reader = Reader::from_context(context)
+        .with_stream_async(format.into(), Cursor::new(asset))
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut buf = Cursor::new(Vec::new());
+    reader
+        .resource_to_stream(&uri, &mut buf)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(buf.into_inner())
+}
+
+#[wasm_bindgen]
 pub fn clean_asset(
     format: SupportedFormat,
     asset: Vec<u8>,
