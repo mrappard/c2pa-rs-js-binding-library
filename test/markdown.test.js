@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { signMarkdownAsset, verifyMarkdownAsset, cleanMarkdownAsset } from '../src/index';
+import { signAsset, verifyMarkdownAsset, cleanMarkdownAsset } from '../src/index';
 
 const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
 
@@ -34,13 +34,14 @@ This is a **Markdown** document with some content.
 test('sign and verify a Markdown asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const result = await signMarkdownAsset(
-    SAMPLE_MD,
-    makeManifest('hello.md'),
+  const result = await signAsset({
+    format: 'md',
+    asset: SAMPLE_MD,
+    manifestDefinition: makeManifest('hello.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
@@ -85,13 +86,14 @@ test('sign and verify a Markdown asset', async () => {
 test('clean a signed Markdown asset removes the C2PA manifest', async () => {
   const { signcert, pkey } = loadCerts();
 
-  const result = await signMarkdownAsset(
-    SAMPLE_MD,
-    makeManifest('hello.md'),
+  const result = await signAsset({
+    format: 'md',
+    asset: SAMPLE_MD,
+    manifestDefinition: makeManifest('hello.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   const cleaned = cleanMarkdownAsset(result.signedAsset);
   const cleanedText = new TextDecoder().decode(cleaned);
@@ -102,13 +104,14 @@ test('clean a signed Markdown asset removes the C2PA manifest', async () => {
 test('sign a Markdown asset passed as a string', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const result = await signMarkdownAsset(
-    SAMPLE_MD,
-    makeManifest('string-input.md'),
+  const result = await signAsset({
+    format: 'md',
+    asset: SAMPLE_MD,
+    manifestDefinition: makeManifest('string-input.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   const outcome = await verifyMarkdownAsset(result.signedAsset, [certPem]);
   expect(outcome.manifests.length).toBeGreaterThan(0);

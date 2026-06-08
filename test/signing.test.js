@@ -52,7 +52,7 @@ test('sign and verify an SVG asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(ASSETS_DIR, 'sample.svg')));
 
-  const result = await signAsset('image/svg+xml', assetData, makeManifest('sample.svg'), signcert, pkey, 'es256');
+  const result = await signAsset({ format: 'image/svg+xml', asset: assetData, manifestDefinition: makeManifest('sample.svg'), signcert, pkey, alg: 'es256' });
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
 
@@ -64,7 +64,7 @@ test('sign and verify a JPEG asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
 
-  const result = await signAsset('image/jpeg', assetData, makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, 'es256');
+  const result = await signAsset({ format: 'image/jpeg', asset: assetData, manifestDefinition: makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, alg: 'es256' });
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
 
@@ -76,7 +76,7 @@ test('sign and verify a PNG asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const result = await signAsset('image/png', assetData, makeManifest('ChatGPT_Image.png'), signcert, pkey, 'es256');
+  const result = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeManifest('ChatGPT_Image.png'), signcert, pkey, alg: 'es256' });
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
 

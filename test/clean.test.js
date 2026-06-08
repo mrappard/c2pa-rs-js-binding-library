@@ -5,7 +5,6 @@ import {
   cleanAsset,
   cleanJsoncAsset,
   signAsset,
-  signJsoncAsset,
   verifyAsset,
   verifyJsoncAsset,
 } from '../src/index';
@@ -34,14 +33,7 @@ test('cleanAsset removes C2PA data from a signed PNG', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const signed = await signAsset(
-    'image/png',
-    assetData,
-    makeManifest('ChatGPT_Image.png'),
-    signcert,
-    pkey,
-    'es256'
-  );
+  const signed = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeManifest('ChatGPT_Image.png'), signcert, pkey, alg: 'es256' });
 
   const verifiedSigned = await verifyAsset('image/png', signed.signedAsset, [certPem]);
   expect(verifiedSigned.manifests.length).toBeGreaterThan(0);
@@ -57,13 +49,14 @@ test('cleanJsoncAsset removes C2PA data from a signed JSONC asset', async () => 
   "enabled": true,
 }`;
 
-  const signed = await signJsoncAsset(
-    jsonc,
-    makeManifest('settings.jsonc'),
+  const signed = await signAsset({
+    format: 'jsonc',
+    asset: jsonc,
+    manifestDefinition: makeManifest('settings.jsonc'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   const verifiedSigned = await verifyJsoncAsset(signed.signedAsset, [certPem]);
   expect(verifiedSigned.manifests.length).toBeGreaterThan(0);
@@ -77,14 +70,7 @@ test('cleanAsset is idempotent once C2PA data has been removed', async () => {
   const { signcert, pkey } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const signed = await signAsset(
-    'image/png',
-    assetData,
-    makeManifest('ChatGPT_Image.png'),
-    signcert,
-    pkey,
-    'es256'
-  );
+  const signed = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeManifest('ChatGPT_Image.png'), signcert, pkey, alg: 'es256' });
 
   const cleanedOnce = cleanAsset('image/png', signed.signedAsset);
   const cleanedTwice = cleanAsset('image/png', cleanedOnce);

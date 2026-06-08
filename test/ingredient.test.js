@@ -2,9 +2,8 @@ import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  signMarkdownAsset,
   verifyMarkdownAsset,
-  signAssetWithParentIngredient,
+  signAsset,
 } from '../src/index';
 
 const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
@@ -32,27 +31,28 @@ test('sign a Markdown file and use it as a parent ingredient in another Markdown
   const { signcert, pkey, certPem } = loadCerts();
 
   // Step 1: sign the parent Markdown document.
-  const parentResult = await signMarkdownAsset(
-    PARENT_MD,
-    makeManifest('source.md'),
+  const parentResult = await signAsset({
+    format: 'md',
+    asset: PARENT_MD,
+    manifestDefinition: makeManifest('source.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
   expect(parentResult.signedAsset).toBeDefined();
 
   // Step 2: sign the child, embedding the signed parent as a parentOf ingredient.
-  const childResult = await signAssetWithParentIngredient(
-    'md',
-    parentResult.signedAsset,        // child asset body (contains the embedded parent manifest)
-    makeManifest('derived.md'),
+  const childResult = await signAsset({
+    format: 'md',
+    asset: parentResult.signedAsset,
+    manifestDefinition: makeManifest('derived.md'),
     signcert,
     pkey,
-    'es256',
-    'md',                             // parent format
-    parentResult.signedAsset,         // parent bytes — manifest is extracted from here
-    'source.md'                       // displayed title for the ingredient
-  );
+    alg: 'es256',
+    parentFormat: 'md',
+    parentAsset: parentResult.signedAsset,
+    parentTitle: 'source.md',
+  });
 
   expect(childResult.signedAsset).toBeDefined();
   expect(childResult.manifest).toBeDefined();
@@ -75,25 +75,26 @@ test('sign a Markdown file and use it as a parent ingredient in another Markdown
 test('parent and child manifest are both present in the manifest store', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const parentResult = await signMarkdownAsset(
-    PARENT_MD,
-    makeManifest('source.md'),
+  const parentResult = await signAsset({
+    format: 'md',
+    asset: PARENT_MD,
+    manifestDefinition: makeManifest('source.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
-  const childResult = await signAssetWithParentIngredient(
-    'md',
-    parentResult.signedAsset,
-    makeManifest('derived.md'),
+  const childResult = await signAsset({
+    format: 'md',
+    asset: parentResult.signedAsset,
+    manifestDefinition: makeManifest('derived.md'),
     signcert,
     pkey,
-    'es256',
-    'md',
-    parentResult.signedAsset,
-    'source.md'
-  );
+    alg: 'es256',
+    parentFormat: 'md',
+    parentAsset: parentResult.signedAsset,
+    parentTitle: 'source.md',
+  });
 
   const outcome = await verifyMarkdownAsset(childResult.signedAsset, [certPem]);
   const store = outcome.manifestStore;
@@ -117,25 +118,26 @@ test('ingredient chain spans three levels of Markdown documents', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
   // Level 1 — grandparent
-  const gp = await signMarkdownAsset(
-    '# Grandparent\n',
-    makeManifest('grandparent.md'),
-    signcert, pkey, 'es256'
-  );
+  const gp = await signAsset({
+    format: 'md',
+    asset: '# Grandparent\n',
+    manifestDefinition: makeManifest('grandparent.md'),
+    signcert, pkey, alg: 'es256',
+  });
 
   // Level 2 — parent uses grandparent as ingredient
-  const parent = await signAssetWithParentIngredient(
-    'md', gp.signedAsset, makeManifest('parent.md'),
-    signcert, pkey, 'es256',
-    'md', gp.signedAsset, 'grandparent.md'
-  );
+  const parent = await signAsset({
+    format: 'md', asset: gp.signedAsset, manifestDefinition: makeManifest('parent.md'),
+    signcert, pkey, alg: 'es256',
+    parentFormat: 'md', parentAsset: gp.signedAsset, parentTitle: 'grandparent.md',
+  });
 
   // Level 3 — child uses parent as ingredient
-  const child = await signAssetWithParentIngredient(
-    'md', parent.signedAsset, makeManifest('child.md'),
-    signcert, pkey, 'es256',
-    'md', parent.signedAsset, 'parent.md'
-  );
+  const child = await signAsset({
+    format: 'md', asset: parent.signedAsset, manifestDefinition: makeManifest('child.md'),
+    signcert, pkey, alg: 'es256',
+    parentFormat: 'md', parentAsset: parent.signedAsset, parentTitle: 'parent.md',
+  });
 
   const outcome = await verifyMarkdownAsset(child.signedAsset, [certPem]);
   const store = outcome.manifestStore;

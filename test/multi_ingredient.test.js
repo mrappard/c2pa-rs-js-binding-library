@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  signMarkdownAsset,
+  signAsset,
   signAssetWithIngredients,
   verifyMarkdownAsset,
 } from '../src/index';
@@ -29,8 +29,8 @@ test('two Markdown ingredients both appear in the derived manifest', async () =>
   const { signcert, pkey, certPem } = loadCerts();
 
   // Sign two independent source documents.
-  const sourceA = await signMarkdownAsset('# Source A\n', makeManifest('source-a.md'), signcert, pkey, 'es256');
-  const sourceB = await signMarkdownAsset('# Source B\n', makeManifest('source-b.md'), signcert, pkey, 'es256');
+  const sourceA = await signAsset({ format: 'md', asset: '# Source A\n', manifestDefinition: makeManifest('source-a.md'), signcert, pkey, alg: 'es256' });
+  const sourceB = await signAsset({ format: 'md', asset: '# Source B\n', manifestDefinition: makeManifest('source-b.md'), signcert, pkey, alg: 'es256' });
 
   // Produce a derived document that references both as ingredients.
   const result = await signAssetWithIngredients(
@@ -65,9 +65,9 @@ test('three ingredients — all manifest IDs are present in the store', async ()
   const { signcert, pkey, certPem } = loadCerts();
 
   const [a, b, c] = await Promise.all([
-    signMarkdownAsset('# Doc A\n', makeManifest('doc-a.md'), signcert, pkey, 'es256'),
-    signMarkdownAsset('# Doc B\n', makeManifest('doc-b.md'), signcert, pkey, 'es256'),
-    signMarkdownAsset('# Doc C\n', makeManifest('doc-c.md'), signcert, pkey, 'es256'),
+    signAsset({ format: 'md', asset: '# Doc A\n', manifestDefinition: makeManifest('doc-a.md'), signcert, pkey, alg: 'es256' }),
+    signAsset({ format: 'md', asset: '# Doc B\n', manifestDefinition: makeManifest('doc-b.md'), signcert, pkey, alg: 'es256' }),
+    signAsset({ format: 'md', asset: '# Doc C\n', manifestDefinition: makeManifest('doc-c.md'), signcert, pkey, alg: 'es256' }),
   ]);
 
   const result = await signAssetWithIngredients(

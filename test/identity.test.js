@@ -6,8 +6,6 @@ import {
   finalizeIdentityAssertion,
   signIdentityAssertionPayloadX509,
   signAsset,
-  signAssetWithX509Identity,
-  signAssetWithIcaIdentity,
   computeIcaIssuerDid,
   verifyAsset,
   verifyIdentityAssertions,
@@ -64,23 +62,23 @@ test('signAssetWithX509Identity signs and verifies a cawg.identity assertion', a
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const result = await signAssetWithX509Identity(
-    'image/png',
-    assetData,
-    makeManifest('ChatGPT_Image.png'),
+  const result = await signAsset({
+    format: 'image/png',
+    asset: assetData,
+    manifestDefinition: makeManifest('ChatGPT_Image.png'),
     signcert,
     pkey,
-    'es256',
-    signcert,
-    pkey,
-    'es256',
-    {
+    alg: 'es256',
+    identitySigncert: signcert,
+    identityPkey: pkey,
+    identityAlg: 'es256',
+    identityOptions: {
       sigType: 'cawg.x509.cose',
       reserveSize: 4096,
       referencedAssertions: ['c2pa.actions'],
       roles: ['cawg.creator'],
-    }
-  );
+    },
+  });
 
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
@@ -188,22 +186,22 @@ test('signAssetWithIcaIdentity signs a PNG with an ICA identity assertion', asyn
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
   const issuerDid = computeIcaIssuerDid(ICA_PRIVATE_KEY);
 
-  const result = await signAssetWithIcaIdentity(
-    'image/png',
-    assetData,
-    makeManifest('ChatGPT_Image.png'),
+  const result = await signAsset({
+    format: 'image/png',
+    asset: assetData,
+    manifestDefinition: makeManifest('ChatGPT_Image.png'),
     signcert,
     pkey,
-    'es256',
+    alg: 'es256',
     issuerDid,
-    ICA_PRIVATE_KEY,
-    makeIcaVerifiedIdentities(),
-    {
+    issuerPrivateKey: ICA_PRIVATE_KEY,
+    verifiedIdentities: makeIcaVerifiedIdentities(),
+    icaOptions: {
       sigType: 'cawg.identity_claims_aggregation',
       reserveSize: 8192,
       roles: ['cawg.creator'],
-    }
-  );
+    },
+  });
 
   expect(result.signedAsset).toBeDefined();
   expect(result.signedAsset.length).toBeGreaterThan(0);
@@ -219,22 +217,22 @@ test('signAssetWithIcaIdentity: verifyIdentityAssertions returns the ICA asserti
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
   const issuerDid = computeIcaIssuerDid(ICA_PRIVATE_KEY);
 
-  const result = await signAssetWithIcaIdentity(
-    'image/png',
-    assetData,
-    makeManifest('ChatGPT_Image.png'),
+  const result = await signAsset({
+    format: 'image/png',
+    asset: assetData,
+    manifestDefinition: makeManifest('ChatGPT_Image.png'),
     signcert,
     pkey,
-    'es256',
+    alg: 'es256',
     issuerDid,
-    ICA_PRIVATE_KEY,
-    makeIcaVerifiedIdentities(),
-    {
+    issuerPrivateKey: ICA_PRIVATE_KEY,
+    verifiedIdentities: makeIcaVerifiedIdentities(),
+    icaOptions: {
       sigType: 'cawg.identity_claims_aggregation',
       reserveSize: 8192,
       roles: ['cawg.creator'],
-    }
-  );
+    },
+  });
 
   const identityOutcome = await verifyIdentityAssertions('image/png', result.signedAsset, [certPem]);
   const manifestIds = Object.keys(identityOutcome.manifests);
@@ -278,8 +276,8 @@ test('assertion_salt: same salt produces identical manifest bytes', async () => 
   const { signcert, pkey } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const r1 = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
-  const r2 = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
+  const r1 = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeStableManifest('test.png', FIXED_SALT), signcert, pkey, alg: 'es256' });
+  const r2 = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeStableManifest('test.png', FIXED_SALT), signcert, pkey, alg: 'es256' });
 
   // Manifest (JUMBF) bytes must be identical: same salt → same assertion hashes
   expect(Array.from(r1.manifest)).toEqual(Array.from(r2.manifest));
@@ -292,8 +290,8 @@ test('assertion_salt: different salts produce different manifest bytes', async (
   const saltA = Array.from({ length: 16 }, () => 0xAA);
   const saltB = Array.from({ length: 16 }, () => 0xBB);
 
-  const r1 = await signAsset('image/png', assetData, makeStableManifest('test.png', saltA), signcert, pkey, 'es256');
-  const r2 = await signAsset('image/png', assetData, makeStableManifest('test.png', saltB), signcert, pkey, 'es256');
+  const r1 = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeStableManifest('test.png', saltA), signcert, pkey, alg: 'es256' });
+  const r2 = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeStableManifest('test.png', saltB), signcert, pkey, alg: 'es256' });
 
   // Different salts → different assertion hashes in claim → different JUMBF bytes
   expect(Array.from(r1.manifest)).not.toEqual(Array.from(r2.manifest));
@@ -303,7 +301,7 @@ test('assertion_salt: signing and verification succeeds with a fixed salt', asyn
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
 
-  const result = await signAsset('image/png', assetData, makeStableManifest('test.png', FIXED_SALT), signcert, pkey, 'es256');
+  const result = await signAsset({ format: 'image/png', asset: assetData, manifestDefinition: makeStableManifest('test.png', FIXED_SALT), signcert, pkey, alg: 'es256' });
   expect(result.signedAsset).toBeDefined();
 
   const outcome = await verifyAsset('image/png', result.signedAsset, [certPem]);

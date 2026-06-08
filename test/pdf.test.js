@@ -26,7 +26,7 @@ test('sign and verify a PDF asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(ASSETS_DIR, 'TestDoc.pdf')));
 
-  const result = await signAsset('application/pdf', assetData, makeManifest('TestDoc.pdf'), signcert, pkey, 'es256');
+  const result = await signAsset({ format: 'application/pdf', asset: assetData, manifestDefinition: makeManifest('TestDoc.pdf'), signcert, pkey, alg: 'es256' });
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
   expect(result.signedAsset.length).toBeGreaterThan(0);
