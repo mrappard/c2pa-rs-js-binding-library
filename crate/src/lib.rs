@@ -400,11 +400,16 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
     tsa_url: Option<String>,
     options: &IdentityAssertionOptions,
     credential_holder: CH,
+    no_embed: bool,
 ) -> Result<C2PASignResult, JsValue> {
     let context = Context::new();
     let mut builder = c2pa::Builder::from_context(context)
         .with_definition(manifest_definition)
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    if no_embed {
+        builder.set_no_embed(true);
+    }
 
     let raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
         &signcert,
@@ -434,6 +439,7 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
 
     signer.add_identity_assertion(identity_builder);
 
+    let original = if no_embed { asset.clone() } else { Vec::new() };
     let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
@@ -442,7 +448,7 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
 
     Ok(C2PASignResult {
-        signed_asset: dest.into_inner(),
+        signed_asset: if no_embed { original } else { dest.into_inner() },
         manifest,
     })
 }
@@ -667,6 +673,245 @@ pub async fn sign_asset(
     })
 }
 
+/// Signs an asset and produces a sidecar manifest file (no manifest embedded in the asset).
+///
+/// The returned `C2PASignResult.manifest` bytes are the sidecar (`.c2pa`) file.
+/// The returned `C2PASignResult.signedAsset` is the asset unchanged (no embedding occurs).
+/// Use `verify_asset_from_sidecar` to verify the sidecar against the asset.
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value = serde_wasm_bindgen::from_value(manifest_definition)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder.set_no_embed(true);
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset.clone());
+    let mut dest = Cursor::new(Vec::new());
+
+    let sidecar = builder.sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: asset,
+        manifest: sidecar,
+    })
+}
+
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar_with_thumbnail(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    thumbnail_format: String,
+    thumbnail_data: Vec<u8>,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let mut manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    stabilize_manifest_definition(&mut manifest_definition_json);
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder.set_no_embed(true);
+    builder
+        .set_thumbnail(&thumbnail_format, &mut Cursor::new(thumbnail_data))
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset.clone());
+    let mut dest = Cursor::new(Vec::new());
+
+    let sidecar = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: asset,
+        manifest: sidecar,
+    })
+}
+
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar_with_parent_ingredient(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    parent_format: SupportedFormat,
+    parent_asset: Vec<u8>,
+    parent_title: String,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder.set_no_embed(true);
+
+    let ingredient_json = serde_json::json!({
+        "title": parent_title,
+        "relationship": "parentOf"
+    })
+    .to_string();
+
+    let parent_format_str: &str = parent_format.into();
+    builder
+        .add_ingredient_from_stream(
+            ingredient_json,
+            parent_format_str,
+            &mut Cursor::new(parent_asset),
+        )
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset.clone());
+    let mut dest = Cursor::new(Vec::new());
+
+    let sidecar = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: asset,
+        manifest: sidecar,
+    })
+}
+
+/// Verifies a sidecar manifest against the original asset bytes.
+///
+/// `sidecar` is the raw JUMBF manifest bytes returned by `sign_asset_sidecar`.
+/// `asset` is the original (unmodified) asset bytes.
+#[wasm_bindgen]
+pub async fn verify_asset_from_sidecar(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    sidecar: Vec<u8>,
+    trusted_certificates: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    console_error_panic_hook::set_once();
+
+    let mut settings = Settings::new().with_value("verify.verify_trust", false)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    settings.trust.trust_anchors = if trusted_certificates.is_empty() {
+        None
+    } else {
+        Some(trusted_certificates.join("\n"))
+    };
+
+    let context = Context::new().with_settings(settings)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let reader = Reader::from_context(context)
+        .with_manifest_data_and_stream_async(&sidecar, format.into(), Cursor::new(asset))
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let manifests = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let thumbnail = manifest.thumbnail().map(|(fmt, bytes)| C2PAThumbnail {
+                format: fmt.to_owned(),
+                data: bytes.into_owned().into(),
+            });
+
+            let ingredients = manifest
+                .ingredients()
+                .iter()
+                .map(|ingredient| C2PAIngredient {
+                    manifest_id: ingredient.active_manifest().map(ToOwned::to_owned),
+                })
+                .collect();
+
+            let assertions = manifest
+                .assertions()
+                .iter()
+                .filter_map(|assertion| {
+                    let value = assertion.value().ok()?.clone();
+                    Some((assertion.label().to_owned(), value))
+                })
+                .collect();
+
+            let credentials = manifest
+                .find_assertion(CREDENTIALS_ASSERTION_LABEL)
+                .unwrap_or_default();
+
+            RecognizedManifest {
+                id: label.to_owned(),
+                title: manifest.title().map(ToOwned::to_owned),
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+                assertions,
+                credentials,
+                thumbnail,
+                ingredients,
+            }
+        })
+        .collect();
+
+    let manifests_map: HashMap<String, ManifestJson> = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let m = ManifestJson {
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                title: manifest.title().map(ToOwned::to_owned),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+            };
+            (label.clone(), m)
+        })
+        .collect();
+
+    let outcome = VerificationOutcome {
+        state: matches!(reader.validation_state(), ValidationState::Trusted),
+        manifests,
+        manifest_store: Some(ManifestStoreJson {
+            active_manifest: reader.active_label().map(ToOwned::to_owned),
+            manifests: manifests_map,
+        }),
+    };
+
+    serialize_to_js(&outcome)
+}
+
 #[wasm_bindgen]
 pub async fn prepare_identity_assertion(
     format: SupportedFormat,
@@ -701,6 +946,7 @@ pub async fn prepare_identity_assertion(
         tsa_url.clone(),
         &options,
         holder,
+        false,
     )?;
 
     let captured = captured
@@ -756,6 +1002,7 @@ pub async fn finalize_identity_assertion(
         state.tsa_url,
         &state.options,
         holder,
+        false,
     )
 }
 
@@ -800,6 +1047,52 @@ pub async fn sign_asset_with_x509_identity(
         tsa_url,
         &options,
         holder,
+        false,
+    )
+}
+
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar_with_x509_identity(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    identity_signcert: Vec<u8>,
+    identity_pkey: Vec<u8>,
+    identity_alg: SigningAlg,
+    options: JsValue,
+    tsa_url: Option<String>,
+    identity_tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let mut manifest_definition_json: serde_json::Value = serde_wasm_bindgen::from_value(manifest_definition)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    stabilize_manifest_definition(&mut manifest_definition_json);
+    let options: IdentityAssertionOptions = serde_wasm_bindgen::from_value(options)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let identity_raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
+        &identity_signcert,
+        &identity_pkey,
+        identity_alg.into(),
+        identity_tsa_url,
+    )
+    .map_err(|err| JsValue::from_str(&err.to_string()))?;
+
+    let holder = c2pa::identity::x509::X509CredentialHolder::from_raw_signer(identity_raw_signer);
+
+    build_identity_sign_result(
+        format,
+        asset,
+        manifest_definition_json,
+        signcert,
+        pkey,
+        alg,
+        tsa_url,
+        &options,
+        holder,
+        true,
     )
 }
 
@@ -900,6 +1193,58 @@ pub async fn sign_asset_with_ica_identity(
         tsa_url,
         &options,
         holder,
+        false,
+    )
+}
+
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar_with_ica_identity(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    issuer_did: String,
+    issuer_private_key: Vec<u8>,
+    verified_identities: JsValue,
+    options: JsValue,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let mut manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    stabilize_manifest_definition(&mut manifest_definition_json);
+
+    let options: IdentityAssertionOptions = serde_wasm_bindgen::from_value(options)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let verified_identities_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(verified_identities)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let key_bytes: [u8; 32] = issuer_private_key
+        .try_into()
+        .map_err(|_| JsValue::from_str("Ed25519 private key must be exactly 32 bytes"))?;
+
+    let holder = IcaCredentialHolder {
+        issuer_did,
+        signing_key: SigningKey::from_bytes(&key_bytes),
+        verified_identities: verified_identities_json,
+        reserve_size: options.reserve_size,
+    };
+
+    build_identity_sign_result(
+        format,
+        asset,
+        manifest_definition_json,
+        signcert,
+        pkey,
+        alg,
+        tsa_url,
+        &options,
+        holder,
+        true,
     )
 }
 

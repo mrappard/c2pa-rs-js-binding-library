@@ -209,6 +209,98 @@ export async function signAssetWithIngredients(
   );
 }
 
+export type SignAssetSidecarOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  manifestDefinition: any;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  tsaUrl?: string;
+
+  // Thumbnail path — both fields required together
+  thumbnailFormat?: string;
+  thumbnailData?: Uint8Array;
+
+  // Parent ingredient path — all three required together
+  parentFormat?: wasm.SupportedFormat;
+  parentAsset?: Uint8Array;
+  parentTitle?: string;
+
+  // X509 identity path — signcert/pkey/alg/options required together
+  identitySigncert?: Uint8Array;
+  identityPkey?: Uint8Array;
+  identityAlg?: wasm.SigningAlg;
+  identityOptions?: IdentityAssertionOptions;
+  identityTsaUrl?: string;
+
+  // ICA identity path — all four required together
+  issuerDid?: string;
+  issuerPrivateKey?: Uint8Array;
+  verifiedIdentities?: IcaVerifiedIdentity[];
+  icaOptions?: IdentityAssertionOptions;
+};
+
+export async function signAssetSidecar(options: SignAssetSidecarOptions): Promise<wasm.C2PASignResult> {
+  const { format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl } = options;
+
+  if (options.identitySigncert && options.identityPkey && options.identityAlg && options.identityOptions) {
+    return wasm.sign_asset_sidecar_with_x509_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.identitySigncert, options.identityPkey, options.identityAlg,
+      {
+        sigType: options.identityOptions.sigType,
+        reserveSize: options.identityOptions.reserveSize,
+        referencedAssertions: options.identityOptions.referencedAssertions ?? [],
+        roles: options.identityOptions.roles ?? [],
+      },
+      tsaUrl, options.identityTsaUrl
+    );
+  }
+
+  if (options.issuerDid && options.issuerPrivateKey && options.verifiedIdentities && options.icaOptions) {
+    return wasm.sign_asset_sidecar_with_ica_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.issuerDid, options.issuerPrivateKey, options.verifiedIdentities,
+      {
+        sigType: options.icaOptions.sigType,
+        reserveSize: options.icaOptions.reserveSize,
+        referencedAssertions: options.icaOptions.referencedAssertions ?? [],
+        roles: options.icaOptions.roles ?? [],
+      },
+      tsaUrl
+    );
+  }
+
+  if (options.thumbnailFormat && options.thumbnailData) {
+    return wasm.sign_asset_sidecar_with_thumbnail(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.thumbnailFormat, options.thumbnailData, tsaUrl
+    );
+  }
+
+  if (options.parentFormat && options.parentAsset && options.parentTitle) {
+    return wasm.sign_asset_sidecar_with_parent_ingredient(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.parentFormat, options.parentAsset, options.parentTitle, tsaUrl
+    );
+  }
+
+  return wasm.sign_asset_sidecar(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
+}
+
+export type VerifyAssetFromSidecarOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  sidecar: Uint8Array;
+  trustedCertificates: string[];
+};
+
+export async function verifyAssetFromSidecar(options: VerifyAssetFromSidecarOptions): Promise<wasm.VerificationOutcome> {
+  const { format, asset, sidecar, trustedCertificates } = options;
+  return wasm.verify_asset_from_sidecar(format, asset, sidecar, trustedCertificates);
+}
+
 export async function signAssetWithParentIngredient(
   format: wasm.SupportedFormat,
   asset: Uint8Array,
