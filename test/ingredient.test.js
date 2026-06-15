@@ -2,12 +2,15 @@ import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  signMarkdownAsset,
   verifyMarkdownAsset,
-  signAssetWithParentIngredient,
+  signAsset,
+  signAssetSidecar,
+  signAssetWithIngredients,
+  verifyAsset,
 } from '../src/index';
 
 const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
+const IMAGE_DIR = join(__dirname, 'assets/image/good');
 
 function loadCerts() {
   return {
@@ -32,26 +35,25 @@ test('sign a Markdown file and use it as a parent ingredient in another Markdown
   const { signcert, pkey, certPem } = loadCerts();
 
   // Step 1: sign the parent Markdown document.
-  const parentResult = await signMarkdownAsset(
-    PARENT_MD,
-    makeManifest('source.md'),
+  const parentResult = await signAsset({
+    format: 'md',
+    asset: PARENT_MD,
+    manifestDefinition: makeManifest('source.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
   expect(parentResult.signedAsset).toBeDefined();
 
   // Step 2: sign the child, embedding the signed parent as a parentOf ingredient.
-  const childResult = await signAssetWithParentIngredient(
+  const childResult = await signAssetWithIngredients(
     'md',
-    parentResult.signedAsset,        // child asset body (contains the embedded parent manifest)
+    parentResult.signedAsset,
     makeManifest('derived.md'),
     signcert,
     pkey,
     'es256',
-    'md',                             // parent format
-    parentResult.signedAsset,         // parent bytes — manifest is extracted from here
-    'source.md'                       // displayed title for the ingredient
+    [{ format: 'md', asset: parentResult.signedAsset, title: 'source.md', relationship: 'parentOf' }]
   );
 
   expect(childResult.signedAsset).toBeDefined();
@@ -75,24 +77,23 @@ test('sign a Markdown file and use it as a parent ingredient in another Markdown
 test('parent and child manifest are both present in the manifest store', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const parentResult = await signMarkdownAsset(
-    PARENT_MD,
-    makeManifest('source.md'),
+  const parentResult = await signAsset({
+    format: 'md',
+    asset: PARENT_MD,
+    manifestDefinition: makeManifest('source.md'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
-  const childResult = await signAssetWithParentIngredient(
+  const childResult = await signAssetWithIngredients(
     'md',
     parentResult.signedAsset,
     makeManifest('derived.md'),
     signcert,
     pkey,
     'es256',
-    'md',
-    parentResult.signedAsset,
-    'source.md'
+    [{ format: 'md', asset: parentResult.signedAsset, title: 'source.md', relationship: 'parentOf' }]
   );
 
   const outcome = await verifyMarkdownAsset(childResult.signedAsset, [certPem]);
@@ -117,24 +118,23 @@ test('ingredient chain spans three levels of Markdown documents', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
   // Level 1 — grandparent
-  const gp = await signMarkdownAsset(
-    '# Grandparent\n',
-    makeManifest('grandparent.md'),
-    signcert, pkey, 'es256'
-  );
+  const gp = await signAsset({
+    format: 'md',
+    asset: '# Grandparent\n',
+    manifestDefinition: makeManifest('grandparent.md'),
+    signcert, pkey, alg: 'es256',
+  });
 
   // Level 2 — parent uses grandparent as ingredient
-  const parent = await signAssetWithParentIngredient(
-    'md', gp.signedAsset, makeManifest('parent.md'),
-    signcert, pkey, 'es256',
-    'md', gp.signedAsset, 'grandparent.md'
+  const parent = await signAssetWithIngredients(
+    'md', gp.signedAsset, makeManifest('parent.md'), signcert, pkey, 'es256',
+    [{ format: 'md', asset: gp.signedAsset, title: 'grandparent.md', relationship: 'parentOf' }]
   );
 
   // Level 3 — child uses parent as ingredient
-  const child = await signAssetWithParentIngredient(
-    'md', parent.signedAsset, makeManifest('child.md'),
-    signcert, pkey, 'es256',
-    'md', parent.signedAsset, 'parent.md'
+  const child = await signAssetWithIngredients(
+    'md', parent.signedAsset, makeManifest('child.md'), signcert, pkey, 'es256',
+    [{ format: 'md', asset: parent.signedAsset, title: 'parent.md', relationship: 'parentOf' }]
   );
 
   const outcome = await verifyMarkdownAsset(child.signedAsset, [certPem]);
@@ -143,4 +143,106 @@ test('ingredient chain spans three levels of Markdown documents', async () => {
   // All three manifests should be present.
   expect(Object.keys(store.manifests).length).toBeGreaterThanOrEqual(3);
   expect(store.manifests[store.activeManifest].title).toBe('child.md');
+});
+
+// ── Sidecar ingredient tests ──────────────────────────────────────────────────
+
+test('sidecar-backed asset can be used as a parent ingredient', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const sourceData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+  const derivedData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+
+  // Step 1: sign the source asset with a sidecar manifest.
+  const sidecarResult = await signAssetSidecar({
+    format: 'image/jpeg',
+    asset: sourceData,
+    manifestDefinition: makeManifest('source.jpg'),
+    signcert,
+    pkey,
+    alg: 'es256',
+  });
+
+  // The sidecar asset is unchanged; the manifest is a separate buffer.
+  expect(sidecarResult.manifest.length).toBeGreaterThan(0);
+
+  // Step 2: sign the derived asset, referencing the sidecar-backed source as a parent ingredient.
+  const childResult = await signAssetWithIngredients(
+    'image/png',
+    derivedData,
+    makeManifest('derived.png'),
+    signcert,
+    pkey,
+    'es256',
+    [{
+      format: 'image/jpeg',
+      asset: sidecarResult.signedAsset,
+      title: 'source.jpg',
+      relationship: 'parentOf',
+      sidecar: sidecarResult.manifest,
+    }]
+  );
+
+  expect(childResult.signedAsset).toBeDefined();
+  expect(childResult.manifest).toBeDefined();
+
+  // Step 3: verify the child manifest.
+  const outcome = await verifyAsset('image/png', childResult.signedAsset, [certPem]);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+
+  const store = outcome.manifestStore;
+  const childManifest = outcome.manifests.find(m => m.id === store.activeManifest);
+  expect(childManifest).toBeDefined();
+  expect(childManifest.title).toBe('derived.png');
+
+  // The child manifest must record the sidecar-backed source as an ingredient.
+  expect(childManifest.ingredients.length).toBeGreaterThan(0);
+  const ingredient = childManifest.ingredients[0];
+  expect(ingredient.title).toBe('source.jpg');
+  // The ingredient's manifestId links it to the source's embedded manifest data.
+  expect(ingredient.manifestId).toBeDefined();
+});
+
+test('sidecar ingredient manifest data is embedded in the child claim', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const sourceData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+  const derivedData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
+
+  const sidecarResult = await signAssetSidecar({
+    format: 'image/jpeg',
+    asset: sourceData,
+    manifestDefinition: makeManifest('source.jpg'),
+    signcert,
+    pkey,
+    alg: 'es256',
+  });
+
+  const childResult = await signAssetWithIngredients(
+    'image/png',
+    derivedData,
+    makeManifest('derived.png'),
+    signcert,
+    pkey,
+    'es256',
+    [{
+      format: 'image/jpeg',
+      asset: sidecarResult.signedAsset,
+      title: 'source.jpg',
+      relationship: 'parentOf',
+      sidecar: sidecarResult.manifest,
+    }]
+  );
+
+  const outcome = await verifyAsset('image/png', childResult.signedAsset, [certPem]);
+  const store = outcome.manifestStore;
+
+  // The manifest store must contain both the child's manifest and the
+  // embedded source manifest (carried over from the sidecar bytes).
+  const allIds = Object.keys(store.manifests);
+  expect(allIds.length).toBeGreaterThanOrEqual(2);
+
+  // The source manifest is accessible by the ingredient's manifestId.
+  const childManifest = outcome.manifests.find(m => m.id === store.activeManifest);
+  const ingredientManifestId = childManifest.ingredients[0].manifestId;
+  expect(store.manifests[ingredientManifestId]).toBeDefined();
+  expect(store.manifests[ingredientManifestId].title).toBe('source.jpg');
 });

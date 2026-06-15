@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { signXmlAsset, verifyXmlAsset } from '../src/index';
+import { signAsset, verifyXmlAsset } from '../src/index';
 
 const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
 
@@ -30,13 +30,14 @@ const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 test('sign and verify an XML asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const result = await signXmlAsset(
-    SAMPLE_XML,
-    makeManifest('settings.xml'),
+  const result = await signAsset({
+    format: 'xml',
+    asset: SAMPLE_XML,
+    manifestDefinition: makeManifest('settings.xml'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();

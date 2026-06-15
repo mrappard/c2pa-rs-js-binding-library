@@ -192,6 +192,8 @@ export type IngredientDescriptor = {
   title: string;
   /** Defaults to `"componentOf"` when omitted. */
   relationship?: 'parentOf' | 'componentOf' | 'inputTo';
+  /** Sidecar manifest bytes (`.c2pa` file) for assets whose manifest is not embedded. */
+  sidecar?: Uint8Array;
 };
 
 export async function signAssetWithIngredients(
@@ -209,53 +211,174 @@ export async function signAssetWithIngredients(
   );
 }
 
-export async function signAssetWithParentIngredient(
+export async function signAssetSidecarWithIngredients(
   format: wasm.SupportedFormat,
   asset: Uint8Array,
   manifestDefinition: any,
   signcert: Uint8Array,
   pkey: Uint8Array,
   alg: wasm.SigningAlg,
-  parentFormat: wasm.SupportedFormat,
-  parentAsset: Uint8Array,
-  parentTitle: string,
+  ingredients: IngredientDescriptor[],
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
-  return wasm.sign_asset_with_parent_ingredient(
-    format, asset, manifestDefinition, signcert, pkey, alg,
-    parentFormat, parentAsset, parentTitle, tsaUrl
+  return wasm.sign_asset_sidecar_with_ingredients(
+    format, asset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
   );
 }
 
-export async function signAssetWithThumbnail(
-  format: wasm.SupportedFormat,
-  asset: Uint8Array,
-  manifestDefinition: any,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  thumbnailFormat: string,
-  thumbnailData: Uint8Array,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return wasm.sign_asset_with_thumbnail(
-    format, asset, manifestDefinition, signcert, pkey, alg,
-    thumbnailFormat, thumbnailData, tsaUrl
-  );
+export type SignAssetSidecarOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  manifestDefinition: any;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  tsaUrl?: string;
+
+  // Thumbnail path — both fields required together
+  thumbnailFormat?: string;
+  thumbnailData?: Uint8Array;
+
+  // X509 identity path — signcert/pkey/alg/options required together
+  identitySigncert?: Uint8Array;
+  identityPkey?: Uint8Array;
+  identityAlg?: wasm.SigningAlg;
+  identityOptions?: IdentityAssertionOptions;
+  identityTsaUrl?: string;
+
+  // ICA identity path — all four required together
+  issuerDid?: string;
+  issuerPrivateKey?: Uint8Array;
+  verifiedIdentities?: IcaVerifiedIdentity[];
+  icaOptions?: IdentityAssertionOptions;
+};
+
+export async function signAssetSidecar(options: SignAssetSidecarOptions): Promise<wasm.C2PASignResult> {
+  const { format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl } = options;
+
+  if (options.identitySigncert && options.identityPkey && options.identityAlg && options.identityOptions) {
+    return wasm.sign_asset_sidecar_with_x509_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.identitySigncert, options.identityPkey, options.identityAlg,
+      {
+        sigType: options.identityOptions.sigType,
+        reserveSize: options.identityOptions.reserveSize,
+        referencedAssertions: options.identityOptions.referencedAssertions ?? [],
+        roles: options.identityOptions.roles ?? [],
+      },
+      tsaUrl, options.identityTsaUrl
+    );
+  }
+
+  if (options.issuerDid && options.issuerPrivateKey && options.verifiedIdentities && options.icaOptions) {
+    return wasm.sign_asset_sidecar_with_ica_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.issuerDid, options.issuerPrivateKey, options.verifiedIdentities,
+      {
+        sigType: options.icaOptions.sigType,
+        reserveSize: options.icaOptions.reserveSize,
+        referencedAssertions: options.icaOptions.referencedAssertions ?? [],
+        roles: options.icaOptions.roles ?? [],
+      },
+      tsaUrl
+    );
+  }
+
+  if (options.thumbnailFormat && options.thumbnailData) {
+    return wasm.sign_asset_sidecar_with_thumbnail(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.thumbnailFormat, options.thumbnailData, tsaUrl
+    );
+  }
+
+  return wasm.sign_asset_sidecar(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
 }
 
-/**
- * Signs a C2PA asset.
- */
-export async function signAsset(
-  format: wasm.SupportedFormat,
-  asset: Uint8Array,
-  manifestDefinition: any,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
+export type VerifyAssetFromSidecarOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  sidecar: Uint8Array;
+  trustedCertificates: string[];
+};
+
+export async function verifyAssetFromSidecar(options: VerifyAssetFromSidecarOptions): Promise<wasm.VerificationOutcome> {
+  const { format, asset, sidecar, trustedCertificates } = options;
+  return wasm.verify_asset_from_sidecar(format, asset, sidecar, trustedCertificates);
+}
+
+export type SignAssetOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array | string;
+  manifestDefinition: any;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  tsaUrl?: string;
+
+  // Thumbnail path — both fields required together
+  thumbnailFormat?: string;
+  thumbnailData?: Uint8Array;
+
+  // X509 identity path — signcert/pkey/alg/options required together
+  identitySigncert?: Uint8Array;
+  identityPkey?: Uint8Array;
+  identityAlg?: wasm.SigningAlg;
+  identityOptions?: IdentityAssertionOptions;
+  identityTsaUrl?: string;
+
+  // ICA identity path — all four required together
+  issuerDid?: string;
+  issuerPrivateKey?: Uint8Array;
+  verifiedIdentities?: IcaVerifiedIdentity[];
+  icaOptions?: IdentityAssertionOptions;
+};
+
+function prepareAsset(format: wasm.SupportedFormat, asset: Uint8Array | string): Uint8Array {
+  if (format === MD_FORMAT) return ensureMarkdownManifestPlaceholder(asset);
+  if (format === XML_FORMAT) return ensureXmlManifestPlaceholder(asset);
+  if (format === JSONC_FORMAT) return ensureJsoncManifestPlaceholder(asset);
+  return typeof asset === 'string' ? textEncoder.encode(asset) : asset;
+}
+
+export async function signAsset(options: SignAssetOptions): Promise<wasm.C2PASignResult> {
+  const { format, manifestDefinition, signcert, pkey, alg, tsaUrl } = options;
+  const asset = prepareAsset(format, options.asset);
+
+  if (options.identitySigncert && options.identityPkey && options.identityAlg && options.identityOptions) {
+    return wasm.sign_asset_with_x509_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.identitySigncert, options.identityPkey, options.identityAlg,
+      {
+        sigType: options.identityOptions.sigType,
+        reserveSize: options.identityOptions.reserveSize,
+        referencedAssertions: options.identityOptions.referencedAssertions ?? [],
+        roles: options.identityOptions.roles ?? [],
+      },
+      tsaUrl, options.identityTsaUrl
+    );
+  }
+
+  if (options.issuerDid && options.issuerPrivateKey && options.verifiedIdentities && options.icaOptions) {
+    return wasm.sign_asset_with_ica_identity(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.issuerDid, options.issuerPrivateKey, options.verifiedIdentities,
+      {
+        sigType: options.icaOptions.sigType,
+        reserveSize: options.icaOptions.reserveSize,
+        referencedAssertions: options.icaOptions.referencedAssertions ?? [],
+        roles: options.icaOptions.roles ?? [],
+      },
+      tsaUrl
+    );
+  }
+
+  if (options.thumbnailFormat && options.thumbnailData) {
+    return wasm.sign_asset_with_thumbnail(
+      format, asset, manifestDefinition, signcert, pkey, alg,
+      options.thumbnailFormat, options.thumbnailData, tsaUrl
+    );
+  }
+
   return wasm.sign_asset(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
 }
 
@@ -303,76 +426,8 @@ export function signIdentityAssertionPayloadX509(
   return wasm.sign_identity_assertion_payload_x509(signerPayloadCbor, signcert, pkey, alg, tsaUrl);
 }
 
-export async function signAssetWithX509Identity(
-  format: wasm.SupportedFormat,
-  asset: Uint8Array,
-  manifestDefinition: Record<string, unknown>,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  identitySigncert: Uint8Array,
-  identityPkey: Uint8Array,
-  identityAlg: wasm.SigningAlg,
-  options: IdentityAssertionOptions,
-  tsaUrl?: string,
-  identityTsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return wasm.sign_asset_with_x509_identity(
-    format,
-    asset,
-    manifestDefinition,
-    signcert,
-    pkey,
-    alg,
-    identitySigncert,
-    identityPkey,
-    identityAlg,
-    {
-      sigType: options.sigType,
-      reserveSize: options.reserveSize,
-      referencedAssertions: options.referencedAssertions ?? [],
-      roles: options.roles ?? [],
-    },
-    tsaUrl,
-    identityTsaUrl
-  );
-}
-
 export function computeIcaIssuerDid(privateKey: Uint8Array): string {
   return wasm.compute_ica_issuer_did(privateKey);
-}
-
-export async function signAssetWithIcaIdentity(
-  format: wasm.SupportedFormat,
-  asset: Uint8Array,
-  manifestDefinition: Record<string, unknown>,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  issuerDid: string,
-  issuerPrivateKey: Uint8Array,
-  verifiedIdentities: IcaVerifiedIdentity[],
-  options: IdentityAssertionOptions,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return wasm.sign_asset_with_ica_identity(
-    format,
-    asset,
-    manifestDefinition,
-    signcert,
-    pkey,
-    alg,
-    issuerDid,
-    issuerPrivateKey,
-    verifiedIdentities,
-    {
-      sigType: options.sigType,
-      reserveSize: options.reserveSize,
-      referencedAssertions: options.referencedAssertions ?? [],
-      roles: options.roles ?? [],
-    },
-    tsaUrl
-  );
 }
 
 export function addCawgMetadataAssertion(
@@ -406,39 +461,12 @@ export async function signAssetWithCawgMetadata(
   alg: wasm.SigningAlg,
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
-  return signAsset(
-    format,
-    asset,
-    addCawgMetadataAssertion(manifestDefinition, metadata),
-    signcert,
-    pkey,
-    alg,
-    tsaUrl
-  );
+  return signAsset({ format, asset, manifestDefinition: addCawgMetadataAssertion(manifestDefinition, metadata), signcert, pkey, alg, tsaUrl });
 }
 
 export function parseJsonc<T = unknown>(asset: JsoncAssetInput): T {
   const text = assertValidJsoncAsset(asset);
   return parse(text, [], { allowTrailingComma: true, disallowComments: false }) as T;
-}
-
-export async function signJsoncAsset(
-  asset: JsoncAssetInput,
-  manifestDefinition: any,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return signAsset(
-    JSONC_FORMAT,
-    ensureJsoncManifestPlaceholder(asset),
-    manifestDefinition,
-    signcert,
-    pkey,
-    alg,
-    tsaUrl
-  );
 }
 
 export async function verifyJsoncAsset(
@@ -453,25 +481,6 @@ export function cleanJsoncAsset(asset: JsoncAssetInput): Uint8Array {
   return cleanAsset(JSONC_FORMAT, encodeJsoncAsset(asset));
 }
 
-export async function signXmlAsset(
-  asset: JsoncAssetInput,
-  manifestDefinition: any,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return signAsset(
-    XML_FORMAT,
-    ensureXmlManifestPlaceholder(asset),
-    manifestDefinition,
-    signcert,
-    pkey,
-    alg,
-    tsaUrl
-  );
-}
-
 export async function verifyXmlAsset(
   asset: JsoncAssetInput,
   trustedCertificates: string[]
@@ -481,25 +490,6 @@ export async function verifyXmlAsset(
 
 export function cleanXmlAsset(asset: JsoncAssetInput): Uint8Array {
   return cleanAsset(XML_FORMAT, encodeJsoncAsset(asset));
-}
-
-export async function signMarkdownAsset(
-  asset: JsoncAssetInput,
-  manifestDefinition: any,
-  signcert: Uint8Array,
-  pkey: Uint8Array,
-  alg: wasm.SigningAlg,
-  tsaUrl?: string
-): Promise<wasm.C2PASignResult> {
-  return signAsset(
-    MD_FORMAT,
-    ensureMarkdownManifestPlaceholder(asset),
-    manifestDefinition,
-    signcert,
-    pkey,
-    alg,
-    tsaUrl
-  );
 }
 
 export async function verifyMarkdownAsset(

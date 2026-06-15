@@ -6,14 +6,15 @@ TypeScript/JavaScript bindings for [C2PA](https://c2pa.org/) (Coalition for Cont
 
 - **Sign** images, PDFs, SVGs, and text formats (JSONC, XML, Markdown) with C2PA manifests
 - **Verify** C2PA manifests and extract provenance data
-- **CAWG identity assertions** — prepare, sign, and verify named-actor identity credentials
+- **Sidecar manifests** — produce a separate `.c2pa` file for assets that cannot be modified (AI/ML datasets)
+- **CAWG identity assertions** — prepare, sign, and verify named-actor identity credentials (X.509 and ICA/W3C VC)
 - **Structured text** — first-class support for source code and document formats
 
 Works in any bundler that supports WASM (Vite, webpack 5, Rollup, esbuild).
 
 ## Supported Formats
 
-| MIME type | Format |
+| MIME type / format string | Format |
 |---|---|
 | `image/jpeg` | JPEG |
 | `image/png` | PNG |
@@ -46,35 +47,189 @@ console.log(result.manifests);   // array of recognized manifests
 
 ### Sign an asset
 
+`signAsset` accepts an options object. The required fields are `format`, `asset`, `manifestDefinition`, `signcert`, `pkey`, and `alg`. Everything else is optional.
+
 ```ts
 import { signAsset } from 'c2pa-rs-javascript-library';
 
 const signcert = new Uint8Array(/* PEM bytes */);
 const pkey     = new Uint8Array(/* private key bytes */);
 
-const result = await signAsset(
-  'image/jpeg',
-  assetBytes,
-  {
+const result = await signAsset({
+  format: 'image/jpeg',
+  asset: assetBytes,           // Uint8Array or string (string accepted for text formats)
+  manifestDefinition: {
     claim_generator_info: [{ name: 'my-app' }],
     title: 'photo.jpg',
     assertions: [
-      {
-        label: 'c2pa.actions',
-        data: { actions: [{ action: 'c2pa.created' }] },
-      },
+      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created' }] } },
     ],
   },
   signcert,
   pkey,
-  'es256'
-);
+  alg: 'es256',
+  tsaUrl: 'http://timestamp.digicert.com', // optional
+});
 
 // result.signedAsset — Uint8Array of the signed file
 // result.manifest   — Uint8Array of the raw JUMBF manifest
 ```
 
-### CAWG identity assertions
+### Signing with a thumbnail
+
+Pass `thumbnailFormat` and `thumbnailData` together:
+
+```ts
+const result = await signAsset({
+  format: 'image/jpeg',
+  asset: assetBytes,
+  manifestDefinition: manifest,
+  signcert, pkey, alg: 'es256',
+  thumbnailFormat: 'image/jpeg',
+  thumbnailData: thumbnailBytes,
+});
+```
+
+### Signing with ingredients
+
+Use `signAssetWithIngredients` to attach one or more ingredients. Each ingredient can optionally carry a `sidecar` for assets whose manifest lives in a separate `.c2pa` file.
+
+```ts
+import { signAssetWithIngredients } from 'c2pa-rs-javascript-library';
+
+// Single parent (embedded manifest)
+const result = await signAssetWithIngredients(
+  'image/jpeg',
+  derivedBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{ format: 'image/jpeg', asset: sourceBytes, title: 'source.jpg', relationship: 'parentOf' }]
+);
+
+// Multiple ingredients, mixed types
+const result = await signAssetWithIngredients(
+  'md',
+  bodyBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [
+    { format: 'md', asset: docA.signedAsset, title: 'doc-a.md', relationship: 'parentOf' },
+    { format: 'md', asset: docB.signedAsset, title: 'doc-b.md', relationship: 'componentOf' },
+  ]
+);
+
+// Sidecar-backed ingredient
+const result = await signAssetWithIngredients(
+  'image/png',
+  derivedBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{
+    format: 'image/jpeg',
+    asset: sourceBytes,
+    title: 'source.jpg',
+    relationship: 'parentOf',
+    sidecar: sidecarManifestBytes,  // .c2pa bytes from signAssetSidecar
+  }]
+);
+```
+
+Use `signAssetSidecarWithIngredients` when the output asset should also be sidecar-signed:
+
+```ts
+import { signAssetSidecarWithIngredients } from 'c2pa-rs-javascript-library';
+
+const result = await signAssetSidecarWithIngredients(
+  'image/png',
+  assetBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{ format: 'image/jpeg', asset: sourceBytes, title: 'source.jpg', relationship: 'parentOf' }]
+);
+// result.signedAsset — original bytes unchanged
+// result.manifest   — sidecar JUMBF bytes
+```
+
+### Structured text (JSONC / XML / Markdown)
+
+Pass the format string and the asset as a plain string (or `Uint8Array`). The placeholder comment required by C2PA is injected automatically:
+
+```ts
+import { signAsset, verifyMarkdownAsset } from 'c2pa-rs-javascript-library';
+
+const result = await signAsset({
+  format: 'md',
+  asset: '# My document\n\nSome content.',  // string accepted directly
+  manifestDefinition: manifest,
+  signcert, pkey, alg: 'es256',
+});
+
+const outcome = await verifyMarkdownAsset(result.signedAsset, [certPem]);
+```
+
+Equivalent verify and clean helpers exist for each text format:
+
+| Format | Verify | Clean |
+|---|---|---|
+| JSONC | `verifyJsoncAsset(asset, certs)` | `cleanJsoncAsset(asset)` |
+| XML | `verifyXmlAsset(asset, certs)` | `cleanXmlAsset(asset)` |
+| Markdown | `verifyMarkdownAsset(asset, certs)` | `cleanMarkdownAsset(asset)` |
+
+### Sidecar manifests (AI/ML datasets)
+
+A sidecar produces a separate `.c2pa` manifest file — the original asset is never modified. This follows the [C2PA AI/ML specification](https://spec.c2pa.org/specifications/specifications/1.3/ai-ml/ai_ml.html).
+
+```ts
+import { signAssetSidecar, verifyAssetFromSidecar } from 'c2pa-rs-javascript-library';
+
+// Sign — returns the original (unmodified) asset and a sidecar manifest
+const result = await signAssetSidecar({
+  format: 'image/jpeg',
+  asset: datasetBytes,
+  manifestDefinition: manifest,
+  signcert, pkey, alg: 'es256',
+});
+
+// result.signedAsset — original bytes, unchanged
+// result.manifest   — JUMBF sidecar bytes (.c2pa file)
+
+// Verify — pass both the asset and its sidecar
+const outcome = await verifyAssetFromSidecar({
+  format: 'image/jpeg',
+  asset: datasetBytes,
+  sidecar: result.manifest,
+  trustedCertificates: [certPem],
+});
+```
+
+`signAssetSidecar` accepts the same optional fields as `signAsset` (`thumbnailFormat`/`thumbnailData` and all identity fields). For sidecar output with ingredients, use `signAssetSidecarWithIngredients`.
+
+### CAWG X.509 identity assertions
+
+Single-pass signing embeds an identity assertion directly:
+
+```ts
+import { signAsset } from 'c2pa-rs-javascript-library';
+
+const result = await signAsset({
+  format: 'image/png',
+  asset: assetBytes,
+  manifestDefinition: manifest,
+  signcert, pkey, alg: 'es256',
+  // identity fields
+  identitySigncert: idSigncert,
+  identityPkey: idPkey,
+  identityAlg: 'es256',
+  identityOptions: {
+    sigType: 'cawg.x509.cose',
+    reserveSize: 4096,
+    referencedAssertions: ['c2pa.actions'],
+    roles: ['cawg.creator'],
+  },
+});
+```
+
+For an external-signer / HSM flow use the two-step API:
 
 ```ts
 import {
@@ -98,29 +253,23 @@ const signature = signIdentityAssertionPayloadX509(
 const result = await finalizeIdentityAssertion(prepared, signature);
 ```
 
-For a single-pass X.509 flow use `signAssetWithX509Identity(...)`.
-
 ### ICA (Identity Claims Aggregation) signing
 
 ```ts
-import {
-  computeIcaIssuerDid,
-  signAssetWithIcaIdentity,
-} from 'c2pa-rs-javascript-library';
+import { computeIcaIssuerDid, signAsset } from 'c2pa-rs-javascript-library';
 
 // Derive the did:jwk DID for the issuer's Ed25519 key (32 raw bytes).
 const issuerDid = computeIcaIssuerDid(issuerPrivateKeyBytes);
 
-const result = await signAssetWithIcaIdentity(
-  'image/png',
-  assetBytes,
-  manifest,
-  signcert,
-  pkey,
-  'es256',
+const result = await signAsset({
+  format: 'image/png',
+  asset: assetBytes,
+  manifestDefinition: manifest,
+  signcert, pkey, alg: 'es256',
+  // ICA identity fields
   issuerDid,
-  issuerPrivateKeyBytes,  // 32-byte Ed25519 seed
-  [
+  issuerPrivateKey: issuerPrivateKeyBytes,  // 32-byte Ed25519 seed
+  verifiedIdentities: [
     {
       type: 'cawg.social_media',
       username: 'myhandle',
@@ -129,20 +278,13 @@ const result = await signAssetWithIcaIdentity(
       provider: { id: 'https://social.example.com', name: 'Example Social' },
     },
   ],
-  { sigType: 'cawg.identity_claims_aggregation', reserveSize: 8192, roles: ['cawg.creator'] }
-);
+  icaOptions: {
+    sigType: 'cawg.identity_claims_aggregation',
+    reserveSize: 8192,
+    roles: ['cawg.creator'],
+  },
+});
 ```
-
-### Structured text (JSONC / XML / Markdown)
-
-```ts
-import { signJsoncAsset, verifyJsoncAsset } from 'c2pa-rs-javascript-library';
-
-const signed = await signJsoncAsset(source, manifest, signcert, pkey, 'es256');
-const result = await verifyJsoncAsset(signed.signedAsset, []);
-```
-
-Equivalent `signXmlAsset`, `verifyXmlAsset`, `signMarkdownAsset`, `verifyMarkdownAsset` helpers are also exported.
 
 ## API Reference
 
@@ -152,9 +294,19 @@ See [`src/index.ts`](src/index.ts) for full TypeScript signatures.
 
 | Function | Description |
 |---|---|
-| `signAsset(format, asset, manifest, cert, key, alg, tsaUrl?)` | Sign any supported format |
+| `signAsset(options)` | Sign any supported format (see `SignAssetOptions`) |
 | `verifyAsset(format, asset, trustedCerts)` | Verify and parse manifests |
 | `cleanAsset(format, asset)` | Remove any embedded C2PA manifest |
+| `getResource(format, asset, uri)` | Retrieve a named resource from a signed asset |
+| `signAssetWithIngredients(format, asset, manifest, cert, key, alg, ingredients, tsaUrl?)` | Sign with one or more ingredients (supports sidecar via `ingredient.sidecar`) |
+| `signAssetSidecarWithIngredients(format, asset, manifest, cert, key, alg, ingredients, tsaUrl?)` | Sidecar output with ingredients |
+
+### Sidecar manifests
+
+| Function | Description |
+|---|---|
+| `signAssetSidecar(options)` | Sign without modifying the asset; returns sidecar bytes (see `SignAssetSidecarOptions`) |
+| `verifyAssetFromSidecar(options)` | Verify an asset using a separate sidecar manifest |
 
 ### Identity assertions (CAWG)
 
@@ -162,47 +314,79 @@ See [`src/index.ts`](src/index.ts) for full TypeScript signatures.
 |---|---|
 | `prepareIdentityAssertion(...)` | Capture signer payload for external signing |
 | `finalizeIdentityAssertion(prepared, signature)` | Embed externally produced signature |
-| `signAssetWithX509Identity(...)` | Single-pass X.509 identity signing |
 | `signIdentityAssertionPayloadX509(cbor, cert, key, alg)` | Sign a CBOR payload with X.509 |
 | `verifyIdentityAssertions(format, asset, trustedCerts)` | Verify CAWG identity assertions |
 | `computeIcaIssuerDid(privateKey)` | Derive `did:jwk` from a 32-byte Ed25519 seed |
-| `signAssetWithIcaIdentity(...)` | Single-pass ICA (W3C VC) identity signing |
 
 ### CAWG metadata
 
 | Function | Description |
 |---|---|
-| `addCawgMetadataAssertion(manifest, metadata)` | Add a `cawg.metadata` assertion |
+| `addCawgMetadataAssertion(manifest, metadata)` | Add a `cawg.metadata` assertion to a manifest definition |
 | `signAssetWithCawgMetadata(...)` | Sign and attach CAWG metadata in one step |
 
 ### Structured text helpers
 
-Each format has `sign*`, `verify*`, and `clean*` variants:
+| Format | Verify | Clean | Parse |
+|---|---|---|---|
+| JSONC | `verifyJsoncAsset` | `cleanJsoncAsset` | `parseJsonc` |
+| XML | `verifyXmlAsset` | `cleanXmlAsset` | — |
+| Markdown | `verifyMarkdownAsset` | `cleanMarkdownAsset` | — |
 
-- `signJsoncAsset` / `verifyJsoncAsset` / `cleanJsoncAsset`
-- `signXmlAsset` / `verifyXmlAsset` / `cleanXmlAsset`
-- `signMarkdownAsset` / `verifyMarkdownAsset` / `cleanMarkdownAsset`
+Signing text formats is done via `signAsset` with `format: 'jsonc' | 'xml' | 'md'` and `asset: string | Uint8Array`.
 
-### Utilities
+## `SignAssetOptions`
 
-| Function | Description |
-|---|---|
-| `parseJsonc(asset)` | Parse JSONC (JSON with comments) to a plain object |
+```ts
+type SignAssetOptions = {
+  // Required
+  format: SupportedFormat;
+  asset: Uint8Array | string;   // string accepted for jsonc, xml, md
+  manifestDefinition: object;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: SigningAlg;
+
+  // Optional
+  tsaUrl?: string;
+
+  // Thumbnail
+  thumbnailFormat?: string;
+  thumbnailData?: Uint8Array;
+
+  // X.509 identity assertion
+  identitySigncert?: Uint8Array;
+  identityPkey?: Uint8Array;
+  identityAlg?: SigningAlg;
+  identityOptions?: IdentityAssertionOptions;
+  identityTsaUrl?: string;
+
+  // ICA identity assertion
+  issuerDid?: string;
+  issuerPrivateKey?: Uint8Array;
+  verifiedIdentities?: IcaVerifiedIdentity[];
+  icaOptions?: IdentityAssertionOptions;
+};
+```
+
+`SignAssetSidecarOptions` has the same shape (without the ingredient fields; use `signAssetSidecarWithIngredients` for that).
 
 ## Manifest definition
-
-The `manifest` object passed to signing functions follows the C2PA `ManifestDefinition` schema:
 
 ```ts
 {
   claim_generator_info: [{ name: string; version?: string }];
   title?: string;
   assertions?: { label: string; data: unknown }[];
-  instance_id?: string;    // auto-generated if omitted
-  label?: string;          // auto-generated if omitted
+  instance_id?: string;      // auto-generated if omitted
+  label?: string;            // auto-generated if omitted
   assertion_salt?: number[]; // optional fixed salt for deterministic assertion hashes
 }
 ```
+
+## Signing algorithms
+
+`SigningAlg`: `'es256'` | `'es384'` | `'es512'` | `'ps256'` | `'ps384'` | `'ps512'` | `'ed25519'`
 
 ## License
 

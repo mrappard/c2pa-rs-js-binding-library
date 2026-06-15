@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseJsonc, signJsoncAsset, verifyJsoncAsset } from '../src/index';
+import { parseJsonc, signAsset, verifyJsoncAsset } from '../src/index';
 
 const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
 
@@ -48,13 +48,14 @@ test('parseJsonc rejects invalid JSONC', () => {
 test('sign and verify a JSONC asset', async () => {
   const { signcert, pkey, certPem } = loadCerts();
 
-  const result = await signJsoncAsset(
-    SAMPLE_JSONC,
-    makeManifest('settings.jsonc'),
+  const result = await signAsset({
+    format: 'jsonc',
+    asset: SAMPLE_JSONC,
+    manifestDefinition: makeManifest('settings.jsonc'),
     signcert,
     pkey,
-    'es256'
-  );
+    alg: 'es256',
+  });
 
   expect(result.signedAsset).toBeDefined();
   expect(result.manifest).toBeDefined();
