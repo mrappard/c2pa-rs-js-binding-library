@@ -90,29 +90,23 @@ const result = await signAsset({
 });
 ```
 
-### Signing with a parent ingredient
+### Signing with ingredients
 
-Pass `parentFormat`, `parentAsset`, and `parentTitle` together:
-
-```ts
-const result = await signAsset({
-  format: 'image/jpeg',
-  asset: derivedBytes,
-  manifestDefinition: manifest,
-  signcert, pkey, alg: 'es256',
-  parentFormat: 'image/jpeg',
-  parentAsset: sourceBytes,   // must already be signed
-  parentTitle: 'source.jpg',
-});
-```
-
-### Signing with multiple ingredients
-
-Use `signAssetWithIngredients` for more than one ingredient:
+Use `signAssetWithIngredients` to attach one or more ingredients. Each ingredient can optionally carry a `sidecar` for assets whose manifest lives in a separate `.c2pa` file.
 
 ```ts
 import { signAssetWithIngredients } from 'c2pa-rs-javascript-library';
 
+// Single parent (embedded manifest)
+const result = await signAssetWithIngredients(
+  'image/jpeg',
+  derivedBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{ format: 'image/jpeg', asset: sourceBytes, title: 'source.jpg', relationship: 'parentOf' }]
+);
+
+// Multiple ingredients, mixed types
 const result = await signAssetWithIngredients(
   'md',
   bodyBytes,
@@ -123,6 +117,37 @@ const result = await signAssetWithIngredients(
     { format: 'md', asset: docB.signedAsset, title: 'doc-b.md', relationship: 'componentOf' },
   ]
 );
+
+// Sidecar-backed ingredient
+const result = await signAssetWithIngredients(
+  'image/png',
+  derivedBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{
+    format: 'image/jpeg',
+    asset: sourceBytes,
+    title: 'source.jpg',
+    relationship: 'parentOf',
+    sidecar: sidecarManifestBytes,  // .c2pa bytes from signAssetSidecar
+  }]
+);
+```
+
+Use `signAssetSidecarWithIngredients` when the output asset should also be sidecar-signed:
+
+```ts
+import { signAssetSidecarWithIngredients } from 'c2pa-rs-javascript-library';
+
+const result = await signAssetSidecarWithIngredients(
+  'image/png',
+  assetBytes,
+  manifest,
+  signcert, pkey, 'es256',
+  [{ format: 'image/jpeg', asset: sourceBytes, title: 'source.jpg', relationship: 'parentOf' }]
+);
+// result.signedAsset — original bytes unchanged
+// result.manifest   — sidecar JUMBF bytes
 ```
 
 ### Structured text (JSONC / XML / Markdown)
@@ -177,7 +202,7 @@ const outcome = await verifyAssetFromSidecar({
 });
 ```
 
-`signAssetSidecar` accepts the same optional fields as `signAsset` (`thumbnailFormat`/`thumbnailData`, `parentFormat`/`parentAsset`/`parentTitle`, and all identity fields).
+`signAssetSidecar` accepts the same optional fields as `signAsset` (`thumbnailFormat`/`thumbnailData` and all identity fields). For sidecar output with ingredients, use `signAssetSidecarWithIngredients`.
 
 ### CAWG X.509 identity assertions
 
@@ -273,7 +298,8 @@ See [`src/index.ts`](src/index.ts) for full TypeScript signatures.
 | `verifyAsset(format, asset, trustedCerts)` | Verify and parse manifests |
 | `cleanAsset(format, asset)` | Remove any embedded C2PA manifest |
 | `getResource(format, asset, uri)` | Retrieve a named resource from a signed asset |
-| `signAssetWithIngredients(format, asset, manifest, cert, key, alg, ingredients, tsaUrl?)` | Sign with multiple ingredients |
+| `signAssetWithIngredients(format, asset, manifest, cert, key, alg, ingredients, tsaUrl?)` | Sign with one or more ingredients (supports sidecar via `ingredient.sidecar`) |
+| `signAssetSidecarWithIngredients(format, asset, manifest, cert, key, alg, ingredients, tsaUrl?)` | Sidecar output with ingredients |
 
 ### Sidecar manifests
 
@@ -328,11 +354,6 @@ type SignAssetOptions = {
   thumbnailFormat?: string;
   thumbnailData?: Uint8Array;
 
-  // Parent ingredient (single)
-  parentFormat?: SupportedFormat;
-  parentAsset?: Uint8Array;
-  parentTitle?: string;
-
   // X.509 identity assertion
   identitySigncert?: Uint8Array;
   identityPkey?: Uint8Array;
@@ -348,7 +369,7 @@ type SignAssetOptions = {
 };
 ```
 
-`SignAssetSidecarOptions` has the same shape.
+`SignAssetSidecarOptions` has the same shape (without the ingredient fields; use `signAssetSidecarWithIngredients` for that).
 
 ## Manifest definition
 

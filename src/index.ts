@@ -192,6 +192,8 @@ export type IngredientDescriptor = {
   title: string;
   /** Defaults to `"componentOf"` when omitted. */
   relationship?: 'parentOf' | 'componentOf' | 'inputTo';
+  /** Sidecar manifest bytes (`.c2pa` file) for assets whose manifest is not embedded. */
+  sidecar?: Uint8Array;
 };
 
 export async function signAssetWithIngredients(
@@ -209,6 +211,21 @@ export async function signAssetWithIngredients(
   );
 }
 
+export async function signAssetSidecarWithIngredients(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  manifestDefinition: any,
+  signcert: Uint8Array,
+  pkey: Uint8Array,
+  alg: wasm.SigningAlg,
+  ingredients: IngredientDescriptor[],
+  tsaUrl?: string
+): Promise<wasm.C2PASignResult> {
+  return wasm.sign_asset_sidecar_with_ingredients(
+    format, asset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
+  );
+}
+
 export type SignAssetSidecarOptions = {
   format: wasm.SupportedFormat;
   asset: Uint8Array;
@@ -221,11 +238,6 @@ export type SignAssetSidecarOptions = {
   // Thumbnail path — both fields required together
   thumbnailFormat?: string;
   thumbnailData?: Uint8Array;
-
-  // Parent ingredient path — all three required together
-  parentFormat?: wasm.SupportedFormat;
-  parentAsset?: Uint8Array;
-  parentTitle?: string;
 
   // X509 identity path — signcert/pkey/alg/options required together
   identitySigncert?: Uint8Array;
@@ -279,13 +291,6 @@ export async function signAssetSidecar(options: SignAssetSidecarOptions): Promis
     );
   }
 
-  if (options.parentFormat && options.parentAsset && options.parentTitle) {
-    return wasm.sign_asset_sidecar_with_parent_ingredient(
-      format, asset, manifestDefinition, signcert, pkey, alg,
-      options.parentFormat, options.parentAsset, options.parentTitle, tsaUrl
-    );
-  }
-
   return wasm.sign_asset_sidecar(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
 }
 
@@ -313,11 +318,6 @@ export type SignAssetOptions = {
   // Thumbnail path — both fields required together
   thumbnailFormat?: string;
   thumbnailData?: Uint8Array;
-
-  // Parent ingredient path — all three required together
-  parentFormat?: wasm.SupportedFormat;
-  parentAsset?: Uint8Array;
-  parentTitle?: string;
 
   // X509 identity path — signcert/pkey/alg/options required together
   identitySigncert?: Uint8Array;
@@ -376,13 +376,6 @@ export async function signAsset(options: SignAssetOptions): Promise<wasm.C2PASig
     return wasm.sign_asset_with_thumbnail(
       format, asset, manifestDefinition, signcert, pkey, alg,
       options.thumbnailFormat, options.thumbnailData, tsaUrl
-    );
-  }
-
-  if (options.parentFormat && options.parentAsset && options.parentTitle) {
-    return wasm.sign_asset_with_parent_ingredient(
-      format, asset, manifestDefinition, signcert, pkey, alg,
-      options.parentFormat, options.parentAsset, options.parentTitle, tsaUrl
     );
   }
 

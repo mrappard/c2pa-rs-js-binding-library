@@ -11,7 +11,7 @@ use ed25519_dalek::{Signer, SigningKey};
 
 use c2pa::{
     settings::Settings,
-    Context, Reader, ValidationState,
+    Context, Ingredient, Reader, Relationship, ValidationState,
 };
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, IntoStaticStr};
@@ -60,6 +60,7 @@ pub struct C2PAThumbnail {
 #[derive(Serialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 pub struct C2PAIngredient {
+    pub title: Option<String>,
     pub manifest_id: Option<String>,
 }
 
@@ -526,17 +527,68 @@ pub struct IngredientDescriptor {
     /// Defaults to `"componentOf"` when omitted.
     #[serde(default = "default_relationship")]
     pub relationship: String,
+    /// Optional sidecar manifest bytes (`.c2pa` file) for assets that carry their manifest
+    /// separately. When present the ingredient is built via `from_manifest_and_asset_bytes_async`
+    /// so that `active_manifest`, `validation_results`, and `manifest_data` are all set correctly.
+    #[serde(default)]
+    pub sidecar: Option<serde_bytes::ByteBuf>,
 }
 
 fn default_relationship() -> String {
     "componentOf".to_string()
 }
 
+async fn add_ingredients_to_builder(
+    builder: &mut c2pa::Builder,
+    descriptors: Vec<IngredientDescriptor>,
+) -> Result<(), JsValue> {
+    for descriptor in descriptors {
+        let format_str: &str = descriptor.format.into();
+        if let Some(sidecar) = descriptor.sidecar {
+            // Build a fully-validated ingredient from the sidecar manifest + asset bytes.
+            // This sets active_manifest, validation_results, and manifest_data — all required
+            // for a valid V3 ingredient assertion.
+            #[allow(deprecated)]
+            let mut ingredient = Ingredient::from_manifest_and_asset_bytes_async(
+                sidecar.into_vec(),
+                format_str,
+                &descriptor.asset,
+            )
+            .await
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+            ingredient.set_title(&descriptor.title);
+            let relationship = match descriptor.relationship.as_str() {
+                "parentOf" => Relationship::ParentOf,
+                "inputTo" => Relationship::InputTo,
+                _ => Relationship::ComponentOf,
+            };
+            ingredient.set_relationship(relationship);
+            builder.add_ingredient(ingredient);
+        } else {
+            let ingredient_json = serde_json::json!({
+                "title": descriptor.title,
+                "relationship": descriptor.relationship,
+            })
+            .to_string();
+            builder
+                .add_ingredient_from_stream(
+                    ingredient_json,
+                    format_str,
+                    &mut Cursor::new(descriptor.asset.into_vec()),
+                )
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
 /// Signs a C2PA asset with one or more ingredients.
 ///
 /// Each entry in `ingredients` must supply `format`, `asset` (bytes), `title`, and optionally
 /// `relationship` (`"parentOf"`, `"componentOf"`, or `"inputTo"`; defaults to `"componentOf"`).
-/// At most one ingredient should use `"parentOf"`.
+/// Supply `sidecar` bytes on an entry to reference an asset whose manifest lives in a separate
+/// `.c2pa` file instead of being embedded.
 #[wasm_bindgen]
 pub async fn sign_asset_with_ingredients(
     format: SupportedFormat,
@@ -560,22 +612,7 @@ pub async fn sign_asset_with_ingredients(
         .with_definition(manifest_definition_json)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    for descriptor in descriptors {
-        let ingredient_json = serde_json::json!({
-            "title": descriptor.title,
-            "relationship": descriptor.relationship,
-        })
-        .to_string();
-
-        let format_str: &str = descriptor.format.into();
-        builder
-            .add_ingredient_from_stream(
-                ingredient_json,
-                format_str,
-                &mut Cursor::new(descriptor.asset.into_vec()),
-            )
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    }
+    add_ingredients_to_builder(&mut builder, descriptors).await?;
 
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -590,6 +627,53 @@ pub async fn sign_asset_with_ingredients(
     Ok(C2PASignResult {
         signed_asset: dest.into_inner(),
         manifest,
+    })
+}
+
+/// Signs a C2PA asset with ingredients and produces a sidecar manifest (no embed in the asset).
+///
+/// Mirrors `sign_asset_with_ingredients` but sets `no_embed = true`. Supports mixed ingredient
+/// sets: entries without `sidecar` use embedded-manifest lookup; entries with `sidecar` bytes
+/// use `from_manifest_and_asset_bytes_async` for full validation.
+#[wasm_bindgen]
+pub async fn sign_asset_sidecar_with_ingredients(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    ingredients: JsValue,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let descriptors: Vec<IngredientDescriptor> = serde_wasm_bindgen::from_value(ingredients)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder.set_no_embed(true);
+    add_ingredients_to_builder(&mut builder, descriptors).await?;
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset.clone());
+    let mut dest = Cursor::new(Vec::new());
+
+    let sidecar = builder
+        .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: asset,
+        manifest: sidecar,
     })
 }
 
@@ -824,7 +908,7 @@ pub async fn verify_asset_from_sidecar(
 ) -> Result<JsValue, JsValue> {
     console_error_panic_hook::set_once();
 
-    let mut settings = Settings::new().with_value("verify.verify_trust", false)
+    let mut settings = Settings::new().with_value("verify.verify_trust", !trusted_certificates.is_empty())
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
     settings.trust.trust_anchors = if trusted_certificates.is_empty() {
         None
@@ -853,6 +937,7 @@ pub async fn verify_asset_from_sidecar(
                 .ingredients()
                 .iter()
                 .map(|ingredient| C2PAIngredient {
+                    title: ingredient.title().map(ToOwned::to_owned),
                     manifest_id: ingredient.active_manifest().map(ToOwned::to_owned),
                 })
                 .collect();
@@ -1338,7 +1423,7 @@ async fn internal_verify(
     trusted_certificates: &[String],
     decode_identity_assertions: bool,
 ) -> c2pa::Result<VerificationOutcome> {
-    let mut settings = Settings::new().with_value("verify.verify_trust", false)?;
+    let mut settings = Settings::new().with_value("verify.verify_trust", !trusted_certificates.is_empty())?;
     settings.core.decode_identity_assertions = decode_identity_assertions;
     settings.trust.trust_anchors = if trusted_certificates.is_empty() {
         None
@@ -1364,6 +1449,7 @@ async fn internal_verify(
                 .ingredients()
                 .iter()
                 .map(|ingredient| C2PAIngredient {
+                    title: ingredient.title().map(ToOwned::to_owned),
                     manifest_id: ingredient.active_manifest().map(ToOwned::to_owned),
                 })
                 .collect();

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { signAssetSidecar, verifyAssetFromSidecar, verifyAsset, computeIcaIssuerDid } from '../src/index';
+import { signAssetSidecar, signAssetSidecarWithIngredients, verifyAssetFromSidecar, verifyAsset, computeIcaIssuerDid } from '../src/index';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -316,17 +316,15 @@ test('sidecar with parent ingredient: asset is unchanged and ingredient is in th
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
   const parentData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
 
-  const result = await signAssetSidecar({
-    format: 'image/png',
-    asset: assetData,
-    manifestDefinition: makeManifest('ChatGPT_Image.png'),
+  const result = await signAssetSidecarWithIngredients(
+    'image/png',
+    assetData,
+    makeManifest('ChatGPT_Image.png'),
     signcert,
     pkey,
-    alg: 'es256',
-    parentFormat: 'image/jpeg',
-    parentAsset: parentData,
-    parentTitle: 'Firefly_tabby_cat.jpg',
-  });
+    'es256',
+    [{ format: 'image/jpeg', asset: parentData, title: 'Firefly_tabby_cat.jpg', relationship: 'parentOf' }]
+  );
 
   expect(result.manifest.length).toBeGreaterThan(0);
   expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
