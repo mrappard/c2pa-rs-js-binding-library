@@ -163,6 +163,25 @@ export async function verifyAsset(
   return wasm.verify_asset(format, asset, trustedCertificates);
 }
 
+/**
+ * Extracts the PEM-encoded signing certificate chain from the active manifest's
+ * signature, without performing any trust validation.
+ *
+ * Useful for debugging verification failures: inspect the returned PEM bundle
+ * (e.g. via `openssl x509 -text`) or pass it as `trustedCertificates` to
+ * `verifyAsset` to test trust against that exact chain.
+ *
+ * @param format The format of the asset (e.g., 'image/jpeg').
+ * @param asset The asset bytes as a Uint8Array.
+ * @returns A promise that resolves to a PEM-encoded certificate chain.
+ */
+export async function getSigningCertificateChain(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array
+): Promise<string> {
+  return wasm.get_signing_certificate_chain(format, asset);
+}
+
 export async function verifyIdentityAssertions(
   format: wasm.SupportedFormat,
   asset: Uint8Array,

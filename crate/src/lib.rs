@@ -1333,6 +1333,43 @@ pub async fn sign_asset_sidecar_with_ica_identity(
     )
 }
 
+/// Extracts the PEM-encoded signing certificate chain (`x5chain`) from the active
+/// manifest's signature, without performing any trust validation.
+///
+/// Useful for debugging verification failures: the returned PEM bundle can be
+/// inspected (e.g. via `openssl x509 -text`) or passed as `trustedCertificates`
+/// to `verify_asset` to test trust against that exact chain.
+#[wasm_bindgen]
+pub async fn get_signing_certificate_chain(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+) -> Result<String, JsValue> {
+    console_error_panic_hook::set_once();
+
+    let settings = Settings::new()
+        .with_value("verify.verify_trust", false)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new()
+        .with_settings(settings)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let reader = Reader::from_context(context)
+        .with_stream_async(format.into(), Cursor::new(asset))
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let manifest = reader
+        .active_manifest()
+        .ok_or_else(|| JsValue::from_str("no active manifest found"))?;
+
+    let signature_info = manifest
+        .signature_info()
+        .ok_or_else(|| JsValue::from_str("no signature info found in active manifest"))?;
+
+    Ok(signature_info.cert_chain().to_string())
+}
+
 #[wasm_bindgen]
 pub async fn verify_asset(
     format: SupportedFormat,

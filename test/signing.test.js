@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { signAsset, verifyAsset } from '../src/index';
+import { signAsset, verifyAsset, getSigningCertificateChain } from '../src/index';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -119,6 +119,19 @@ test('verifyAsset reports state=true when the signing chain matches a trusted ce
 
   const outcome = await verifyAsset('image/jpeg', result.signedAsset, [certPem]);
   expect(outcome.state).toBe(true);
+});
+
+test('getSigningCertificateChain extracts the PEM cert chain used to sign', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+
+  const result = await signAsset({ format: 'image/jpeg', asset: assetData, manifestDefinition: makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, alg: 'es256' });
+
+  const chain = await getSigningCertificateChain('image/jpeg', result.signedAsset);
+  expect(chain).toContain('-----BEGIN CERTIFICATE-----');
+
+  const leafCert = certPem.split('-----END CERTIFICATE-----')[0] + '-----END CERTIFICATE-----';
+  expect(chain).toContain(leafCert.trim());
 });
 
 test('verifyAsset reports state=false when the signing chain does not match an unrelated trusted certificate', async () => {
