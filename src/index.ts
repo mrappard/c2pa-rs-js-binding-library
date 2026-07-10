@@ -1,7 +1,7 @@
 import * as wasm from '../pkg/c2pa_rs_wasm.js';
 import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 
-export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient, SigningAlg } from '../pkg/c2pa_rs_wasm.js';
+export type { SupportedFormat, VerificationOutcome, RecognizedManifest, C2PAThumbnail, C2PAIngredient, SigningAlg, SignatureVerificationResult } from '../pkg/c2pa_rs_wasm.js';
 
 const JSONC_FORMAT = 'jsonc' as wasm.SupportedFormat;
 const CAWG_METADATA_LABEL = 'cawg.metadata';
@@ -182,6 +182,40 @@ export async function getSigningCertificateChain(
   return wasm.get_signing_certificate_chain(format, asset);
 }
 
+/**
+ * Verifies only the cryptographic claim signature, ignoring asset hash mismatches.
+ *
+ * Returns `{ signatureValid, trusted, manifests, manifestStore }` where:
+ * - `signatureValid` — the COSE signature over the manifest is cryptographically intact
+ * - `trusted` — the signing cert chain validates against the provided trust anchors
+ *
+ * Unlike `verifyAsset`, this does NOT fail when the asset's content hashes don't match.
+ * Useful for verifying a manifest that was extracted from one file and applied to another,
+ * or confirming a signature is authentic before checking file integrity separately.
+ */
+/**
+ * Verifies a raw `.c2pa` sidecar manifest without needing the original asset.
+ *
+ * The `application/x-c2pa-manifest-store` IO handler performs no asset hashing,
+ * so signature and trust chain can be checked from the manifest bytes alone.
+ *
+ * Returns `{ signatureValid, trusted, manifests, manifestStore }`.
+ */
+export async function verifyManifestBytes(
+  sidecar: Uint8Array,
+  trustedCertificates: string[]
+): Promise<wasm.SignatureVerificationResult> {
+  return wasm.verify_manifest_bytes(sidecar, trustedCertificates) as Promise<wasm.SignatureVerificationResult>;
+}
+
+export async function verifyAssetSignatureOnly(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array,
+  trustedCertificates: string[]
+): Promise<wasm.SignatureVerificationResult> {
+  return wasm.verify_asset_signature_only(format, asset, trustedCertificates) as Promise<wasm.SignatureVerificationResult>;
+}
+
 export async function verifyIdentityAssertions(
   format: wasm.SupportedFormat,
   asset: Uint8Array,
@@ -203,6 +237,25 @@ export function cleanAsset(
   asset: Uint8Array
 ): Uint8Array {
   return wasm.clean_asset(format, asset);
+}
+
+/**
+ * Extracts the embedded C2PA manifest from an asset and returns it as a sidecar.
+ *
+ * Returns `{ manifest, signedAsset }` where:
+ * - `manifest` is the raw JUMBF bytes — suitable for saving as a `.c2pa` sidecar file
+ * - `signedAsset` is the original asset with the embedded manifest stripped out
+ *
+ * **Note:** The extracted sidecar will not pass hash verification via `verifyAssetFromSidecar`
+ * because the embedded manifest's hash uses JUMBF exclusion zones, while sidecar verification
+ * hashes the full stripped asset — the two differ. To produce a verifiable sidecar, use
+ * `signAssetSidecar` on the original unsigned asset instead of extracting post-hoc.
+ */
+export function extractManifestToSidecar(
+  format: wasm.SupportedFormat,
+  asset: Uint8Array
+): wasm.C2PASignResult {
+  return wasm.extract_manifest_to_sidecar(format, asset);
 }
 
 export type IngredientDescriptor = {

@@ -104,6 +104,18 @@ pub struct VerificationOutcome {
     pub manifest_store: Option<ManifestStoreJson>,
 }
 
+/// Result of a signature-only verification (hash mismatches are ignored).
+#[derive(Serialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureVerificationResult {
+    /// True if the cryptographic claim signature is valid (regardless of asset hash).
+    pub signature_valid: bool,
+    /// True if the signing certificate chain is trusted against the provided trust anchors.
+    pub trusted: bool,
+    pub manifests: Vec<RecognizedManifest>,
+    pub manifest_store: Option<ManifestStoreJson>,
+}
+
 #[derive(Serialize, Deserialize, Tsify)]
 #[derive(Copy, Clone, Debug)]
 #[tsify(from_wasm_abi)]
@@ -1370,6 +1382,267 @@ pub async fn get_signing_certificate_chain(
     Ok(signature_info.cert_chain().to_string())
 }
 
+/// Verifies only the cryptographic claim signature, ignoring asset hash mismatches.
+///
+/// Returns `signatureValid: true` if `claimSignature.validated` is present in the
+/// validation success codes — meaning the COSE signature over the manifest is
+/// cryptographically intact — regardless of whether the asset content hashes match.
+///
+/// Pass `trusted_certificates` (PEM bundle) to also check cert-chain trust; if empty,
+/// `trusted` will be false but `signatureValid` may still be true.
+#[wasm_bindgen]
+pub async fn verify_asset_signature_only(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    trusted_certificates: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    console_error_panic_hook::set_once();
+
+    let mut settings = Settings::new()
+        .with_value("verify.verify_trust", !trusted_certificates.is_empty())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    settings.trust.trust_anchors = if trusted_certificates.is_empty() {
+        None
+    } else {
+        Some(trusted_certificates.join("\n"))
+    };
+
+    let context = Context::new()
+        .with_settings(settings)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let reader = match Reader::from_context(context)
+        .with_stream_async(format.into(), Cursor::new(asset))
+        .await
+    {
+        Ok(r) => r,
+        Err(c2pa::Error::JumbfNotFound) => {
+            let outcome = SignatureVerificationResult {
+                signature_valid: false,
+                trusted: false,
+                manifests: vec![],
+                manifest_store: None,
+            };
+            return serialize_to_js(&outcome);
+        }
+        Err(e) => return Err(JsValue::from_str(&e.to_string())),
+    };
+
+    let (signature_valid, trusted) = if let Some(results) = reader.validation_results() {
+        if let Some(active) = results.active_manifest() {
+            let sig_valid = active
+                .success()
+                .iter()
+                .any(|s| s.code() == "claimSignature.validated");
+            let cert_trusted = active
+                .success()
+                .iter()
+                .any(|s| s.code() == "signingCredential.trusted");
+            (sig_valid, cert_trusted)
+        } else {
+            (false, false)
+        }
+    } else {
+        (false, false)
+    };
+
+    let manifests = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let thumbnail = manifest.thumbnail().map(|(fmt, bytes)| C2PAThumbnail {
+                format: fmt.to_owned(),
+                data: bytes.into_owned().into(),
+            });
+            let ingredients = manifest
+                .ingredients()
+                .iter()
+                .map(|ingredient| C2PAIngredient {
+                    title: ingredient.title().map(ToOwned::to_owned),
+                    manifest_id: ingredient.active_manifest().map(ToOwned::to_owned),
+                })
+                .collect();
+            let assertions = manifest
+                .assertions()
+                .iter()
+                .filter_map(|assertion| {
+                    let value = assertion.value().ok()?.clone();
+                    Some((assertion.label().to_owned(), value))
+                })
+                .collect();
+            let credentials = manifest
+                .find_assertion(CREDENTIALS_ASSERTION_LABEL)
+                .unwrap_or_default();
+            RecognizedManifest {
+                id: label.to_owned(),
+                title: manifest.title().map(ToOwned::to_owned),
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+                assertions,
+                credentials,
+                thumbnail,
+                ingredients,
+            }
+        })
+        .collect();
+
+    let manifests_map: HashMap<String, ManifestJson> = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let m = ManifestJson {
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                title: manifest.title().map(ToOwned::to_owned),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+            };
+            (label.clone(), m)
+        })
+        .collect();
+
+    let outcome = SignatureVerificationResult {
+        signature_valid,
+        trusted,
+        manifests,
+        manifest_store: Some(ManifestStoreJson {
+            active_manifest: reader.active_label().map(ToOwned::to_owned),
+            manifests: manifests_map,
+        }),
+    };
+
+    serialize_to_js(&outcome)
+}
+
+/// Verifies a raw `.c2pa` sidecar manifest without needing the original asset.
+///
+/// Uses the `application/x-c2pa-manifest-store` IO handler, which performs no asset
+/// hashing, so the signature and trust chain can be checked from the manifest bytes alone.
+///
+/// Returns a `SignatureVerificationResult` with:
+/// - `signatureValid` — the COSE claim signature is cryptographically intact
+/// - `trusted` — the signing cert chain validates against the provided trust anchors
+#[wasm_bindgen]
+pub async fn verify_manifest_bytes(
+    sidecar: Vec<u8>,
+    trusted_certificates: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    console_error_panic_hook::set_once();
+
+    let mut settings = Settings::new()
+        .with_value("verify.verify_trust", !trusted_certificates.is_empty())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    settings.trust.trust_anchors = if trusted_certificates.is_empty() {
+        None
+    } else {
+        Some(trusted_certificates.join("\n"))
+    };
+
+    let context = Context::new()
+        .with_settings(settings)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    // Use the c2pa manifest-store format: its IO handler returns no hash locations,
+    // so no asset hashing occurs. Empty bytes are sufficient as the "asset" stream.
+    let reader = Reader::from_context(context)
+        .with_manifest_data_and_stream_async(
+            &sidecar,
+            "application/x-c2pa-manifest-store",
+            Cursor::new(vec![]),
+        )
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let (signature_valid, trusted) = if let Some(results) = reader.validation_results() {
+        if let Some(active) = results.active_manifest() {
+            let sig_valid = active
+                .success()
+                .iter()
+                .any(|s| s.code() == "claimSignature.validated");
+            let cert_trusted = active
+                .success()
+                .iter()
+                .any(|s| s.code() == "signingCredential.trusted");
+            (sig_valid, cert_trusted)
+        } else {
+            (false, false)
+        }
+    } else {
+        (false, false)
+    };
+
+    let manifests = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let thumbnail = manifest.thumbnail().map(|(fmt, bytes)| C2PAThumbnail {
+                format: fmt.to_owned(),
+                data: bytes.into_owned().into(),
+            });
+            let ingredients = manifest
+                .ingredients()
+                .iter()
+                .map(|ingredient| C2PAIngredient {
+                    title: ingredient.title().map(ToOwned::to_owned),
+                    manifest_id: ingredient.active_manifest().map(ToOwned::to_owned),
+                })
+                .collect();
+            let assertions = manifest
+                .assertions()
+                .iter()
+                .filter_map(|assertion| {
+                    let value = assertion.value().ok()?.clone();
+                    Some((assertion.label().to_owned(), value))
+                })
+                .collect();
+            let credentials = manifest
+                .find_assertion(CREDENTIALS_ASSERTION_LABEL)
+                .unwrap_or_default();
+            RecognizedManifest {
+                id: label.to_owned(),
+                title: manifest.title().map(ToOwned::to_owned),
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+                assertions,
+                credentials,
+                thumbnail,
+                ingredients,
+            }
+        })
+        .collect();
+
+    let manifests_map: HashMap<String, ManifestJson> = reader
+        .manifests()
+        .iter()
+        .map(|(label, manifest)| {
+            let m = ManifestJson {
+                claim_generator: manifest.claim_generator().map(ToOwned::to_owned),
+                claim_generator_info: serde_json::to_value(&manifest.claim_generator_info).ok(),
+                title: manifest.title().map(ToOwned::to_owned),
+                instance_id: manifest.instance_id().to_owned(),
+                signature_info: manifest.signature_info().and_then(|si| serde_json::to_value(si).ok()),
+            };
+            (label.clone(), m)
+        })
+        .collect();
+
+    let outcome = SignatureVerificationResult {
+        signature_valid,
+        trusted,
+        manifests,
+        manifest_store: Some(ManifestStoreJson {
+            active_manifest: reader.active_label().map(ToOwned::to_owned),
+            manifests: manifests_map,
+        }),
+    };
+
+    serialize_to_js(&outcome)
+}
+
 #[wasm_bindgen]
 pub async fn verify_asset(
     format: SupportedFormat,
@@ -1452,6 +1725,34 @@ pub fn clean_asset(
         Err(c2pa::Error::JumbfNotFound) => Ok(asset),
         Err(err) => Err(JsValue::from_str(&err.to_string())),
     }
+}
+
+/// Extracts the embedded C2PA manifest from an asset and returns it as a sidecar.
+///
+/// Returns a `C2PASignResult` where:
+/// - `manifest` is the raw JUMBF bytes suitable for saving as a `.c2pa` sidecar file
+/// - `signedAsset` is the original asset with the embedded manifest stripped out
+///
+/// **Note:** The returned sidecar will not pass hash verification via `verify_asset_from_sidecar`
+/// because the embedded manifest's hash was computed using JUMBF exclusion zones, while sidecar
+/// verification hashes the entire stripped asset without exclusions — the two produce different
+/// hash values. To produce a verifiable sidecar from the start, use `sign_asset_sidecar` instead.
+#[wasm_bindgen]
+pub fn extract_manifest_to_sidecar(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+) -> Result<C2PASignResult, JsValue> {
+    let sidecar = c2pa::jumbf_io::load_jumbf_from_memory(format.into(), &asset)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let stripped = match c2pa::jumbf_io::remove_jumbf_from_memory(format.into(), &asset) {
+        Ok(cleaned) => cleaned,
+        Err(c2pa::Error::JumbfNotFound) => asset,
+        Err(err) => return Err(JsValue::from_str(&err.to_string())),
+    };
+    Ok(C2PASignResult {
+        signed_asset: stripped,
+        manifest: sidecar,
+    })
 }
 
 async fn internal_verify(

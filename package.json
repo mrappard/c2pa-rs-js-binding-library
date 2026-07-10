@@ -1,6 +1,6 @@
 {
   "name": "c2pa-rs-javascript-library",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "TypeScript bindings for C2PA signing and verification powered by Rust and WebAssembly",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -44,6 +44,8 @@
     "manifest:png": "node --input-type=module -e \"import('./script/outputManifestFromPng.ts')\"",
     "manifest:jpg": "node --input-type=module -e \"import('./script/outputManifestFromJpg.ts')\"",
     "manifest:structured-text": "node --input-type=module -e \"import('./script/outputManifestFromStructuredText.ts')\"",
+    "manifest:signPdf": "node --input-type=module -e \"import('./script/signPdf.ts')\"",
+     "manifest:extractSidecar": "node --input-type=module -e \"import('./script/extractSidecar.ts')\"",
     "prepack": "npm run build"
   },
   "devDependencies": {

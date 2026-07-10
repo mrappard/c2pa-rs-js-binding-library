@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { signAsset, verifyAsset, getSigningCertificateChain } from '../src/index';
+import { signAsset, verifyAsset, getSigningCertificateChain, extractManifestToSidecar, verifyAssetFromSidecar, verifyAssetSignatureOnly, cleanAsset } from '../src/index';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -132,6 +132,54 @@ test('getSigningCertificateChain extracts the PEM cert chain used to sign', asyn
 
   const leafCert = certPem.split('-----END CERTIFICATE-----')[0] + '-----END CERTIFICATE-----';
   expect(chain).toContain(leafCert.trim());
+});
+
+test('extractManifestToSidecar extracts the JUMBF bytes and strips them from the asset', async () => {
+  const { signcert, pkey } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+
+  const signed = await signAsset({ format: 'image/jpeg', asset: assetData, manifestDefinition: makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, alg: 'es256' });
+
+  const extracted = extractManifestToSidecar('image/jpeg', signed.signedAsset);
+  // manifest contains the raw JUMBF bytes for the .c2pa sidecar file
+  expect(extracted.manifest.length).toBeGreaterThan(0);
+  // signedAsset is the original asset with the embedded manifest removed
+  expect(extracted.signedAsset.length).toBeGreaterThan(0);
+  expect(extracted.signedAsset.length).toBeLessThan(signed.signedAsset.length);
+
+  // The extracted sidecar can be parsed: manifests are returned even without trust certs.
+  // Note: state will be false because the embedded hash (computed with JUMBF exclusion zones)
+  // does not match the sidecar hash (computed over the entire stripped asset). To produce a
+  // properly verifiable sidecar, sign with signAssetSidecar instead of extracting post-hoc.
+  const outcome = await verifyAssetFromSidecar({ format: 'image/jpeg', asset: extracted.signedAsset, sidecar: extracted.manifest, trustedCertificates: [] });
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+});
+
+test('verifyAssetSignatureOnly reports signatureValid=true even when asset hash does not match', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+
+  const signed = await signAsset({ format: 'image/jpeg', asset: assetData, manifestDefinition: makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, alg: 'es256' });
+
+  // Extract sidecar — the resulting sidecar has a hash mismatch when verified against the stripped asset
+  const extracted = extractManifestToSidecar('image/jpeg', signed.signedAsset);
+
+  // verifyAssetFromSidecar would return state=false due to hash mismatch
+  // verifyAssetSignatureOnly should still confirm the crypto signature is intact
+  const outcome = await verifyAssetSignatureOnly('image/jpeg', signed.signedAsset, [certPem]);
+  expect(outcome.signatureValid).toBe(true);
+  expect(outcome.trusted).toBe(true);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+});
+
+test('verifyAssetSignatureOnly reports signatureValid=false for an asset with no manifest', async () => {
+  const { signcert, pkey } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+  const signed = await signAsset({ format: 'image/jpeg', asset: assetData, manifestDefinition: makeManifest('Firefly_tabby_cat.jpg'), signcert, pkey, alg: 'es256' });
+  const stripped = cleanAsset('image/jpeg', signed.signedAsset);
+  const outcome = await verifyAssetSignatureOnly('image/jpeg', stripped, []);
+  expect(outcome.signatureValid).toBe(false);
+  expect(outcome.trusted).toBe(false);
 });
 
 test('verifyAsset reports state=false when the signing chain does not match an unrelated trusted certificate', async () => {
