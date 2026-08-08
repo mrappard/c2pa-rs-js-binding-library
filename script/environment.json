@@ -10,7 +10,7 @@
     "inputFile": "script/output/TestDoc_signed.pdf",
     "format": "application/pdf",
     "outputSidecar": "script/output/manifest.c2pa",
-    "outputStrippedAsset": "script/output/TestDoc_signed_stripped.jpg",
+    "outputStrippedAsset": "script/output/TestDoc_signed_stripped.pdf",
     "manifestId": ""
   },
   "signPdf": {
@@ -20,7 +20,7 @@
     "pkey": "examples/c2pa-rs-text-support/cli/sample/es256_private.key",
     "alg": "es256",
     "tsaUrl": "",
-    "manifestId": "urn:c2pa:2b21a52f-0589-402d-b4b8-18affbd5e110",
+    "manifestId": "urn:c2pa:3567464f-8dde-47f3-8fe2-c96bbcbc7189",
     "manifest": {
       "claim_generator_info": [
         {
@@ -28,72 +28,81 @@
         }
       ],
       "title": "QR Codes for C2PA Manifest Checking",
-      "assertions": {
-        "c2pa.actions.v2": {
-          "actions": [{ "action": "c2pa.created" }]
-        },
-        "cawg.identity": {
-          "signer_payload": {
-            "sig_type": "cawg.identity_claims_aggregation",
-            "role": ["cawg.creator"],
-            "referenced_assertions": []
-          },
-          "verifiedIdentities": [
-            {
-              "type": "cawg.document_verification",
-              "name": "Matthew Rappard",
-              "provider": {
-                "id": "https://cognitive-proof.com/",
-                "name": "Cognitive Proof"
-              },
-              "verifiedAt": "2024-07-26T22:30:15Z"
-            },
-            {
-              "type": "cawg.web_site",
-              "uri": "https://matthewrappard.com",
-              "provider": {
-                "id": "https://matthewrappard.com",
-                "name": "matthewrappard.com"
-              },
-              "verifiedAt": "2024-09-25T22:13:35Z"
-            },
-            {
-              "type": "cawg.affiliation",
-              "provider": {
-                "id": "https://c2pa.org/",
-                "name": "Coalition for Content Provenance and Authenticity"
-              },
-              "verifiedAt": "2024-07-26T22:29:57Z"
-            }
-          ],
-          "issuer": "did:web:c2pa.org"
-        },
-        "cawg.metadata": {
-          "@context": {
-            "dc": "http://purl.org/dc/elements/1.1/",
-            "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/",
-            "photoshop": "http://ns.adobe.com/photoshop/1.0/"
-          },
-          "dc:creator": "Matthew Rappard",
-          "dc:publisher": "Cognitive Proof",
-          "photoshop:DateCreated": "2024-07-26",
-          "Iptc4xmpExt:DigitalSourceType": "https://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
-          "Iptc4xmpExt:LocationCreated": {
-            "Iptc4xmpExt:City": "Toronto"
+      "assertions": [
+        {
+          "label": "c2pa.actions.v2",
+          "data": {
+            "actions": [{ "action": "c2pa.created" }]
           }
         },
-        "cawg.training-mining": {
-          "entries": {
-            "cawg.data_mining": { "use": "allowed" },
-            "cawg.ai_inference": { "use": "allowed" },
-            "cawg.ai_training": { "use": "allowed" },
-            "cawg.ai_generative_training": {
-              "use": "allowed"
-            
+        {
+          "label": "cawg.identity",
+          "data": {
+            "signer_payload": {
+              "sig_type": "cawg.identity_claims_aggregation",
+              "role": ["cawg.creator"],
+              "referenced_assertions": []
+            },
+            "verifiedIdentities": [
+              {
+                "type": "cawg.document_verification",
+                "name": "Matthew Rappard",
+                "provider": {
+                  "id": "https://cognitive-proof.com/",
+                  "name": "Cognitive Proof"
+                },
+                "verifiedAt": "2024-07-26T22:30:15Z"
+              },
+              {
+                "type": "cawg.web_site",
+                "uri": "https://matthewrappard.com",
+                "provider": {
+                  "id": "https://matthewrappard.com",
+                  "name": "matthewrappard.com"
+                },
+                "verifiedAt": "2024-09-25T22:13:35Z"
+              },
+              {
+                "type": "cawg.affiliation",
+                "provider": {
+                  "id": "https://c2pa.org/",
+                  "name": "Coalition for Content Provenance and Authenticity"
+                },
+                "verifiedAt": "2024-07-26T22:29:57Z"
+              }
+            ],
+            "issuer": "did:web:c2pa.org"
+          }
+        },
+        {
+          "label": "cawg.metadata",
+          "data": {
+            "@context": {
+              "dc": "http://purl.org/dc/elements/1.1/",
+              "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/",
+              "photoshop": "http://ns.adobe.com/photoshop/1.0/"
+            },
+            "dc:creator": "Matthew Rappard",
+            "dc:publisher": "Cognitive Proof",
+            "photoshop:DateCreated": "2024-07-26",
+            "Iptc4xmpExt:DigitalSourceType": "https://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+            "Iptc4xmpExt:LocationCreated": {
+              "Iptc4xmpExt:City": "Toronto"
+            }
+          }
+        },
+        {
+          "label": "cawg.training-mining",
+          "data": {
+            "entries": {
+              "cawg.data_mining": { "use": "allowed" },
+              "cawg.ai_inference": { "use": "allowed" },
+              "cawg.ai_training": { "use": "allowed" },
+              "cawg.ai_generative_training": { "use": "allowed" }
             }
           }
         }
-      }
+      ]
     }
   }
 }

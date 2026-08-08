@@ -1533,6 +1533,10 @@ pub async fn verify_manifest_bytes(
 
     let mut settings = Settings::new()
         .with_value("verify.verify_trust", !trusted_certificates.is_empty())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?
+        // Disable CAWG identity decoding to avoid async validation failures that silently
+        // drop manifests from reader.manifests() when loading a bare .c2pa sidecar.
+        .with_value("core.decode_identity_assertions", false)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
     settings.trust.trust_anchors = if trusted_certificates.is_empty() {
         None
@@ -1544,14 +1548,11 @@ pub async fn verify_manifest_bytes(
         .with_settings(settings)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    // Use the c2pa manifest-store format: its IO handler returns no hash locations,
-    // so no asset hashing occurs. Empty bytes are sufficient as the "asset" stream.
+    // The c2pa-manifest-store format's read_cai reads the entire stream as manifest data,
+    // so passing the sidecar bytes as the stream is equivalent to loading a .c2pa file
+    // from disk. No asset hashing occurs since get_object_locations returns empty.
     let reader = Reader::from_context(context)
-        .with_manifest_data_and_stream_async(
-            &sidecar,
-            "application/x-c2pa-manifest-store",
-            Cursor::new(vec![]),
-        )
+        .with_stream_async("application/x-c2pa-manifest-store", Cursor::new(sidecar))
         .await
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 

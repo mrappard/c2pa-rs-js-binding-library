@@ -1,4 +1,4 @@
-import { extractManifestToSidecar, verifyAssetFromSidecar } from '../src/index.ts';
+import { extractManifestToSidecar, verifyAsset, verifyManifestBytes } from '../src/index.ts';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, resolve, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,7 +22,7 @@ type Environment = {
    */
   outputStrippedAsset?: string;
   /**
-   * Optional manifest ID (e.g. "urn:uuid:828b19c8-...") to target a specific manifest in the
+   * Optional manifest ID (e.g. "urn:c2pa:828b19c8-...") to target a specific manifest in the
    * store. If set, the script validates the ID exists and prints its metadata before writing.
    * If omitted or "", the active manifest is used. Run once without this set to discover IDs.
    */
@@ -52,23 +52,16 @@ async function run() {
   console.log('');
 
   const asset = new Uint8Array(readFileSync(inputPath));
-  const result = extractManifestToSidecar(env.format as any, asset);
 
-  // Parse the sidecar to inspect manifest IDs. state will be false due to the
-  // embedded-vs-sidecar hash difference, but manifests are still returned.
-  const outcome = await verifyAssetFromSidecar({
-    format: env.format as any,
-    asset: result.signedAsset,
-    sidecar: result.manifest,
-    trustedCertificates: [],
-  });
-
+  // Read manifest IDs from the original embedded asset.
+  const outcome = await verifyAsset(env.format as any, asset, []);
+  console.log('DEBUG verifyAsset outcome:', JSON.stringify(outcome, null, 2));
   const store = outcome.manifestStore;
   const allIds = store ? Object.keys(store.manifests) : [];
   const activeId = store?.activeManifest ?? null;
 
   if (allIds.length === 0) {
-    console.error('No manifests found in the extracted sidecar.');
+    console.error('No manifests found in the asset.');
     process.exit(1);
   }
 
@@ -81,7 +74,7 @@ async function run() {
     const m = store!.manifests[env.manifestId];
     console.log(`Manifest:`);
     console.log(`  ID:        ${env.manifestId}${env.manifestId === activeId ? ' (active)' : ''}`);
-    if (m.title)         console.log(`  Title:     ${m.title}`);
+    if (m.title)          console.log(`  Title:     ${m.title}`);
     if (m.claimGenerator) console.log(`  Generator: ${m.claimGenerator}`);
   } else {
     console.log(`Active manifest: ${activeId}`);
@@ -93,6 +86,8 @@ async function run() {
 
   console.log('');
 
+  const result = extractManifestToSidecar(env.format as any, asset);
+
   mkdirSync(dirname(sidecarPath), { recursive: true });
   writeFileSync(sidecarPath, result.manifest);
   console.log(`Sidecar written: ${sidecarPath} (${result.manifest.length} bytes)`);
@@ -102,6 +97,9 @@ async function run() {
     writeFileSync(strippedPath, result.signedAsset);
     console.log(`Stripped asset written: ${strippedPath} (${result.signedAsset.length} bytes)`);
   }
+
+  const sidecarOutcome = await verifyManifestBytes(result.manifest, []);
+  console.log('\nDEBUG verifyManifestBytes on extracted sidecar:', JSON.stringify(sidecarOutcome, null, 2));
 }
 
 run().catch((err) => {
