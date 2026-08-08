@@ -17,7 +17,7 @@ function makeManifest(title) {
   return {
     claim_generator_info: [{ name: 'test_generator' }],
     title,
-    assertions: [{ label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created' }] } }],
+    assertions: [{ label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' }] } }],
   };
 }
 

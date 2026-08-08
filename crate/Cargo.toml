@@ -22,8 +22,11 @@ strum = { version = "0.27.1", features = ["derive"] }
 toml = "0.8"
 tsify = { version = "0.4.5", features = ["js"] }
 console_error_panic_hook = "0.1"
-c2pa = { package = "c2pa-rs-text-support", path = "../examples/c2pa-rs-text-support/sdk", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema", "http_reqwest"] }
+c2pa = { package = "c2pa-rs-text-support", git = "https://github.com/mrappard/c2pa-rs-text-support.git", rev = "28a6a3fea4b9512d69be205e2e97d1f4ef85df76", default-features = false, features = ["rust_native_crypto", "pdf", "fetch_remote_manifests", "json_schema", "http_reqwest"] }
+c2pa_raw_crypto = { version = "0.1.2", default-features = false, features = ["rust_native_crypto"] }
 getrandom = { version = "0.2", features = ["js"] }
+getrandom3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom4 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 uuid = { version = "1", features = ["v4"] }
 coset = "0.4.0"
 ed25519-dalek = { version = "2.1.1", features = ["alloc"] }

@@ -19,7 +19,7 @@ function makeManifest(title) {
   return {
     claim_generator_info: [{ name: 'test_generator' }],
     title,
-    assertions: [{ label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created' }] } }],
+    assertions: [{ label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' }] } }],
   };
 }
 
@@ -28,7 +28,7 @@ function makeManifestWithAssetReference(title, assetUri) {
     claim_generator_info: [{ name: 'test_generator' }],
     title,
     assertions: [
-      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created' }] } },
+      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' }] } },
       {
         label: 'c2pa.asset.reference',
         data: {

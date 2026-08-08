@@ -21,6 +21,29 @@ use wasm_bindgen::prelude::*;
 const CREDENTIALS_ASSERTION_LABEL: &str = "io.vaultie.credentials";
 const IDENTITY_ASSERTION_PREFIX: &str = "cawg.identity";
 
+fn cert_chain_pem_to_der(pem: &[u8]) -> Vec<Vec<u8>> {
+    let Ok(s) = std::str::from_utf8(pem) else { return vec![] };
+    let mut certs = Vec::new();
+    let mut in_cert = false;
+    let mut b64 = String::new();
+    for line in s.lines() {
+        if line.contains("BEGIN CERTIFICATE") {
+            in_cert = true;
+            b64.clear();
+        } else if line.contains("END CERTIFICATE") {
+            if in_cert {
+                if let Ok(der) = BASE64_STANDARD.decode(b64.trim()) {
+                    certs.push(der);
+                }
+            }
+            in_cert = false;
+        } else if in_cert {
+            b64.push_str(line.trim());
+        }
+    }
+    certs
+}
+
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, IntoStaticStr, Tsify)]
 #[tsify(from_wasm_abi)]
 pub enum SupportedFormat {
@@ -136,16 +159,16 @@ pub enum SigningAlg {
     Ed25519,
 }
 
-impl From<SigningAlg> for c2pa::crypto::raw_signature::SigningAlg {
+impl From<SigningAlg> for c2pa::SigningAlg {
     fn from(alg: SigningAlg) -> Self {
         match alg {
-            SigningAlg::Es256 => c2pa::crypto::raw_signature::SigningAlg::Es256,
-            SigningAlg::Es384 => c2pa::crypto::raw_signature::SigningAlg::Es384,
-            SigningAlg::Es512 => c2pa::crypto::raw_signature::SigningAlg::Es512,
-            SigningAlg::Ps256 => c2pa::crypto::raw_signature::SigningAlg::Ps256,
-            SigningAlg::Ps384 => c2pa::crypto::raw_signature::SigningAlg::Ps384,
-            SigningAlg::Ps512 => c2pa::crypto::raw_signature::SigningAlg::Ps512,
-            SigningAlg::Ed25519 => c2pa::crypto::raw_signature::SigningAlg::Ed25519,
+            SigningAlg::Es256 => c2pa::SigningAlg::Es256,
+            SigningAlg::Es384 => c2pa::SigningAlg::Es384,
+            SigningAlg::Es512 => c2pa::SigningAlg::Es512,
+            SigningAlg::Ps256 => c2pa::SigningAlg::Ps256,
+            SigningAlg::Ps384 => c2pa::SigningAlg::Ps384,
+            SigningAlg::Ps512 => c2pa::SigningAlg::Ps512,
+            SigningAlg::Ed25519 => c2pa::SigningAlg::Ed25519,
         }
     }
 }
@@ -424,15 +447,11 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
         builder.set_no_embed(true);
     }
 
-    let raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
-        &signcert,
-        &pkey,
-        alg.into(),
-        tsa_url,
-    )
-    .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let raw_signer = c2pa_raw_crypto::signer_from_private_key(&pkey, alg.into())
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let cert_chain = cert_chain_pem_to_der(&signcert);
 
-    let mut signer = c2pa::identity::builder::IdentityAssertionSigner::new(raw_signer);
+    let mut signer = c2pa::identity::builder::IdentityAssertionSigner::new(raw_signer, cert_chain);
     let mut identity_builder =
         c2pa::identity::builder::IdentityAssertionBuilder::for_credential_holder(credential_holder);
 
@@ -1124,15 +1143,14 @@ pub async fn sign_asset_with_x509_identity(
     let options: IdentityAssertionOptions = serde_wasm_bindgen::from_value(options)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let identity_raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
-        &identity_signcert,
-        &identity_pkey,
-        identity_alg.into(),
-        identity_tsa_url,
-    )
-    .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let identity_raw_signer = c2pa_raw_crypto::signer_from_private_key(&identity_pkey, identity_alg.into())
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let identity_cert_chain = cert_chain_pem_to_der(&identity_signcert);
 
-    let holder = c2pa::identity::x509::X509CredentialHolder::from_raw_signer(identity_raw_signer);
+    let holder = c2pa::identity::x509::X509CredentialHolder::from_raw_signer(
+        identity_raw_signer,
+        identity_cert_chain,
+    );
 
     build_identity_sign_result(
         format,
@@ -1169,15 +1187,14 @@ pub async fn sign_asset_sidecar_with_x509_identity(
     let options: IdentityAssertionOptions = serde_wasm_bindgen::from_value(options)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let identity_raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
-        &identity_signcert,
-        &identity_pkey,
-        identity_alg.into(),
-        identity_tsa_url,
-    )
-    .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let identity_raw_signer = c2pa_raw_crypto::signer_from_private_key(&identity_pkey, identity_alg.into())
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let identity_cert_chain = cert_chain_pem_to_der(&identity_signcert);
 
-    let holder = c2pa::identity::x509::X509CredentialHolder::from_raw_signer(identity_raw_signer);
+    let holder = c2pa::identity::x509::X509CredentialHolder::from_raw_signer(
+        identity_raw_signer,
+        identity_cert_chain,
+    );
 
     build_identity_sign_result(
         format,
@@ -1201,21 +1218,12 @@ pub fn sign_identity_assertion_payload_x509(
     alg: SigningAlg,
     tsa_url: Option<String>,
 ) -> Result<Vec<u8>, JsValue> {
-    let raw_signer = c2pa::crypto::raw_signature::signer_from_cert_chain_and_private_key(
-        &signcert,
-        &pkey,
-        alg.into(),
-        tsa_url,
-    )
-    .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let raw_signer = c2pa_raw_crypto::signer_from_private_key(&pkey, alg.into())
+        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let cert_chain = cert_chain_pem_to_der(&signcert);
 
-    c2pa::crypto::cose::sign(
-        raw_signer.as_ref(),
-        &signer_payload_cbor,
-        None,
-        c2pa::crypto::cose::TimeStampStorage::V2_sigTst2_CTT,
-    )
-    .map_err(|err| JsValue::from_str(&err.to_string()))
+    c2pa::cose_sign::sign_payload(raw_signer.as_ref(), &cert_chain, &signer_payload_cbor)
+        .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 /// Derives the `did:jwk` DID for a given Ed25519 private key (32 raw bytes).
