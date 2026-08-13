@@ -1,6 +1,6 @@
 {
   "name": "c2pa-rs-javascript-library",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "TypeScript bindings for C2PA signing and verification powered by Rust and WebAssembly",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -23,12 +23,17 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "node": {
+        "types": "./dist-node/index.d.ts",
+        "default": "./dist-node/index.js"
+      },
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
     "dist",
+    "dist-node",
     "README.md",
     "LICENSE-APACHE",
     "LICENSE-MIT"
@@ -36,10 +41,12 @@
   "type": "module",
   "scripts": {
     "build:wasm": "CC=/opt/homebrew/opt/llvm/bin/clang AR=/opt/homebrew/opt/llvm/bin/llvm-ar wasm-pack build crate --target bundler --out-dir ../pkg",
+    "build:wasm:node": "CC=/opt/homebrew/opt/llvm/bin/clang AR=/opt/homebrew/opt/llvm/bin/llvm-ar wasm-pack build crate --target nodejs --out-dir ../pkg-node",
     "test:wasm": "CC=/opt/homebrew/opt/llvm/bin/clang AR=/opt/homebrew/opt/llvm/bin/llvm-ar wasm-pack build crate --target nodejs --out-dir ../pkg",
     "build:ts": "tsc",
+    "build:ts:node": "tsc --project tsconfig.node.json",
     "build:package": "node ./script/preparePublish.mjs",
-    "build": "npm run build:wasm && npm run build:ts && npm run build:package",
+    "build": "npm run build:wasm && npm run build:wasm:node && npm run build:ts && npm run build:ts:node && npm run build:package",
     "test": "npm run test:wasm && vitest run",
     "manifest:png": "node --input-type=module -e \"import('./script/outputManifestFromPng.ts')\"",
     "manifest:jpg": "node --input-type=module -e \"import('./script/outputManifestFromJpg.ts')\"",

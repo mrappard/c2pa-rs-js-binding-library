@@ -1,6 +1,6 @@
 # c2pa-rs-javascript-library
 
-TypeScript/JavaScript bindings for [C2PA](https://c2pa.org/) (Coalition for Content Provenance and Authenticity) signing and verification, powered by Rust compiled to WebAssembly.
+TypeScript/JavaScript bindings for [C2PA](https://c2pa.org/) (Coalition for Content Provenance and Authenticity) signing and verification, powered by Rust compiled to WebAssembly. Built on [c2pa-rs](https://github.com/contentauth/c2pa-rs) with extended support for text-based formats.
 
 ## What It Does
 
@@ -62,7 +62,7 @@ const result = await signAsset({
     claim_generator_info: [{ name: 'my-app' }],
     title: 'photo.jpg',
     assertions: [
-      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created' }] } },
+      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' }] } },
     ],
   },
   signcert,
@@ -383,6 +383,17 @@ type SignAssetOptions = {
   assertion_salt?: number[]; // optional fixed salt for deterministic assertion hashes
 }
 ```
+
+## Actions and digitalSourceType
+
+C2PA requires that every `c2pa.created` action includes a `digitalSourceType` URI from the [IPTC digital source type vocabulary](https://cv.iptc.org/newscodes/digitalsourcetype/). Common values:
+
+| Value | Meaning |
+|---|---|
+| `http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture` | Photo/scan taken by a camera |
+| `http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia` | AI-generated content |
+| `http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia` | Human + AI composite |
+| `http://cv.iptc.org/newscodes/digitalsourcetype/algorithmicMedia` | Purely algorithmic (non-AI) |
 
 ## Signing algorithms
 

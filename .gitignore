@@ -13,6 +13,8 @@ yarn-error.log*
 
 # WebAssembly (wasm-pack)
 /pkg/
+/pkg-node/
+/dist-node/
 
 # Script output
 script/output/
