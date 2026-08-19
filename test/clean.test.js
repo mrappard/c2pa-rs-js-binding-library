@@ -11,7 +11,7 @@ import {
 
 const ASSETS_DIR = join(__dirname, 'assets');
 const IMAGE_DIR = join(ASSETS_DIR, 'image', 'good');
-const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
+const SAMPLE_DIR = join(__dirname, 'assets/sample');
 
 function loadCerts() {
   return {

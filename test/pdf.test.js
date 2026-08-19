@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const ASSETS_DIR = join(__dirname, 'assets');
-const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
+const SAMPLE_DIR = join(__dirname, 'assets/sample');
 
 function loadCerts() {
   return {

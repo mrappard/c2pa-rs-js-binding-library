@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { signAsset, verifyMarkdownAsset, cleanMarkdownAsset } from '../src/index';
 
-const SAMPLE_DIR = join(__dirname, '../examples/c2pa-rs-text-support/cli/sample');
+const SAMPLE_DIR = join(__dirname, 'assets/sample');
 
 function loadCerts() {
   return {
