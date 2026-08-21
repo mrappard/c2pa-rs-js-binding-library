@@ -71,6 +71,15 @@ pub enum SupportedFormat {
     #[serde(rename = "md")]
     #[strum(serialize = "md")]
     Md,
+    #[serde(rename = "audio/mpeg")]
+    #[strum(serialize = "audio/mpeg")]
+    Mp3,
+    #[serde(rename = "audio/wav")]
+    #[strum(serialize = "audio/wav")]
+    Wav,
+    #[serde(rename = "audio/flac")]
+    #[strum(serialize = "audio/flac")]
+    Flac,
 }
 
 #[derive(Serialize, Tsify)]
