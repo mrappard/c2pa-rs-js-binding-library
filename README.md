@@ -4,7 +4,7 @@ TypeScript/JavaScript bindings for [C2PA](https://c2pa.org/) (Coalition for Cont
 
 ## What It Does
 
-- **Sign** images, PDFs, SVGs, and text formats (JSONC, XML, Markdown) with C2PA manifests
+- **Sign** images, PDFs, SVGs, audio files (MP3, WAV, FLAC), and text formats (JSONC, XML, Markdown) with C2PA manifests
 - **Verify** C2PA manifests and extract provenance data
 - **Sidecar manifests** — produce a separate `.c2pa` file for assets that cannot be modified (AI/ML datasets)
 - **CAWG identity assertions** — prepare, sign, and verify named-actor identity credentials (X.509 and ICA/W3C VC)
@@ -21,6 +21,9 @@ Works in any bundler that supports WASM (Vite, webpack 5, Rollup, esbuild).
 | `image/svg+xml` | SVG |
 | `image/x-adobe-dng` | DNG |
 | `application/pdf` | PDF |
+| `audio/mpeg` | MP3 |
+| `audio/wav` | WAV |
+| `audio/flac` | FLAC |
 | `jsonc` | JSONC / JSON with comments |
 | `xml` | XML |
 | `md` | Markdown |
@@ -73,6 +76,29 @@ const result = await signAsset({
 
 // result.signedAsset — Uint8Array of the signed file
 // result.manifest   — Uint8Array of the raw JUMBF manifest
+```
+
+### Sign an audio asset
+
+Audio formats work the same way — just pass the appropriate MIME type:
+
+```ts
+const result = await signAsset({
+  format: 'audio/mpeg',  // or 'audio/wav' or 'audio/flac'
+  asset: audioBytes,
+  manifestDefinition: {
+    claim_generator_info: [{ name: 'my-app' }],
+    title: 'recording.mp3',
+    assertions: [
+      { label: 'c2pa.actions', data: { actions: [{ action: 'c2pa.created', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' }] } },
+    ],
+  },
+  signcert,
+  pkey,
+  alg: 'es256',
+});
+
+const outcome = await verifyAsset('audio/mpeg', result.signedAsset, [certPem]);
 ```
 
 ### Signing with a thumbnail
