@@ -182,7 +182,7 @@ impl From<SigningAlg> for c2pa::SigningAlg {
     }
 }
 
-#[derive(Serialize, Deserialize, Tsify)]
+#[derive(Clone, Serialize, Deserialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 #[tsify(from_wasm_abi)]
 pub struct IdentityAssertionOptions {
@@ -192,6 +192,22 @@ pub struct IdentityAssertionOptions {
     pub referenced_assertions: Vec<String>,
     #[serde(default)]
     pub roles: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedIcaIdentityAssertionState {
+    format: SupportedFormat,
+    asset: serde_bytes::ByteBuf,
+    manifest_definition: serde_json::Value,
+    signcert: serde_bytes::ByteBuf,
+    pkey: serde_bytes::ByteBuf,
+    alg: SigningAlg,
+    tsa_url: Option<String>,
+    options: IdentityAssertionOptions,
+    issuer_did: String,
+    vc_bytes: serde_bytes::ByteBuf,
+    to_sign: serde_bytes::ByteBuf,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -287,6 +303,62 @@ impl c2pa::identity::builder::CredentialHolder for PrepareIdentityAssertionCrede
     }
 }
 
+fn build_ica_vc_bytes(
+    signer_payload: &c2pa::identity::SignerPayload,
+    issuer_did: &str,
+    verified_identities: &serde_json::Value,
+) -> Result<Vec<u8>, c2pa::identity::builder::IdentityBuilderError> {
+    // Build referenced_assertions with hashes as UTF-8 bytes of their base64 encoding.
+    // The IcaSignatureVerifier does String::from_utf8(a.hash()) then base64::decode to recover
+    // the original raw bytes, so the hash stored in the VC JSON must be the base64 string's
+    // UTF-8 bytes serialized as a serde_bytes byte array.
+    let referenced_assertions: Vec<serde_json::Value> = signer_payload
+        .referenced_assertions
+        .iter()
+        .map(|ra| {
+            let b64 = BASE64_STANDARD.encode(ra.hash());
+            let hash_bytes = b64.into_bytes();
+            let mut obj = serde_json::json!({
+                "url": ra.url(),
+                "hash": hash_bytes,
+            });
+            if let Some(alg) = ra.alg() {
+                obj.as_object_mut().unwrap().insert("alg".to_string(), serde_json::json!(alg));
+            }
+            obj
+        })
+        .collect();
+
+    let mut c2pa_asset = serde_json::json!({
+        "sig_type": signer_payload.sig_type,
+        "referenced_assertions": referenced_assertions,
+    });
+    if !signer_payload.roles.is_empty() {
+        c2pa_asset
+            .as_object_mut()
+            .unwrap()
+            .insert("role".to_string(), serde_json::json!(signer_payload.roles));
+    }
+
+    let valid_from = Utc::now().to_rfc3339();
+    let vc_json = serde_json::json!({
+        "@context": [
+            "https://www.w3.org/ns/credentials/v2",
+            "https://cawg.io/identity/1.1/ica/context/"
+        ],
+        "type": ["VerifiableCredential", "IdentityClaimsAggregationCredential"],
+        "issuer": issuer_did,
+        "validFrom": valid_from,
+        "credentialSubject": {
+            "verifiedIdentities": verified_identities,
+            "c2paAsset": c2pa_asset,
+        }
+    });
+
+    serde_json::to_vec(&vc_json)
+        .map_err(|e| c2pa::identity::builder::IdentityBuilderError::SignerError(e.to_string()))
+}
+
 struct IcaCredentialHolder {
     issuer_did: String,
     signing_key: SigningKey,
@@ -307,55 +379,7 @@ impl c2pa::identity::builder::CredentialHolder for IcaCredentialHolder {
         &self,
         signer_payload: &c2pa::identity::SignerPayload,
     ) -> Result<Vec<u8>, c2pa::identity::builder::IdentityBuilderError> {
-        // Build referenced_assertions with hashes as UTF-8 bytes of their base64 encoding.
-        // The IcaSignatureVerifier does String::from_utf8(a.hash()) then base64::decode to recover
-        // the original raw bytes, so the hash stored in the VC JSON must be the base64 string's
-        // UTF-8 bytes serialized as a serde_bytes byte array.
-        let referenced_assertions: Vec<serde_json::Value> = signer_payload
-            .referenced_assertions
-            .iter()
-            .map(|ra| {
-                let b64 = BASE64_STANDARD.encode(ra.hash());
-                let hash_bytes = b64.into_bytes();
-                let mut obj = serde_json::json!({
-                    "url": ra.url(),
-                    "hash": hash_bytes,
-                });
-                if let Some(alg) = ra.alg() {
-                    obj.as_object_mut().unwrap().insert("alg".to_string(), serde_json::json!(alg));
-                }
-                obj
-            })
-            .collect();
-
-        let mut c2pa_asset = serde_json::json!({
-            "sig_type": signer_payload.sig_type,
-            "referenced_assertions": referenced_assertions,
-        });
-        if !signer_payload.roles.is_empty() {
-            c2pa_asset
-                .as_object_mut()
-                .unwrap()
-                .insert("role".to_string(), serde_json::json!(signer_payload.roles));
-        }
-
-        let valid_from = Utc::now().to_rfc3339();
-        let vc_json = serde_json::json!({
-            "@context": [
-                "https://www.w3.org/ns/credentials/v2",
-                "https://cawg.io/identity/1.1/ica/context/"
-            ],
-            "type": ["VerifiableCredential", "IdentityClaimsAggregationCredential"],
-            "issuer": self.issuer_did,
-            "validFrom": valid_from,
-            "credentialSubject": {
-                "verifiedIdentities": self.verified_identities,
-                "c2paAsset": c2pa_asset,
-            }
-        });
-
-        let vc_bytes = serde_json::to_vec(&vc_json)
-            .map_err(|e| c2pa::identity::builder::IdentityBuilderError::SignerError(e.to_string()))?;
+        let vc_bytes = build_ica_vc_bytes(signer_payload, &self.issuer_did, &self.verified_identities)?;
 
         let mut protected_header = Header::default();
         protected_header.alg = Some(RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA));
@@ -366,6 +390,96 @@ impl c2pa::identity::builder::CredentialHolder for IcaCredentialHolder {
             .protected(protected_header)
             .payload(vc_bytes)
             .create_signature(b"", |to_sign| signing_key.sign(to_sign).to_bytes().to_vec())
+            .build();
+
+        sign1
+            .to_tagged_vec()
+            .map_err(|e| c2pa::identity::builder::IdentityBuilderError::SignerError(e.to_string()))
+    }
+}
+
+#[derive(Default)]
+struct CapturedIcaToSign {
+    to_sign: Option<Vec<u8>>,
+    vc_bytes: Option<Vec<u8>>,
+}
+
+struct PrepareIcaCredentialHolder {
+    issuer_did: String,
+    verified_identities: serde_json::Value,
+    captured: Arc<Mutex<CapturedIcaToSign>>,
+}
+
+impl c2pa::identity::builder::CredentialHolder for PrepareIcaCredentialHolder {
+    fn sig_type(&self) -> &'static str {
+        "cawg.identity_claims_aggregation"
+    }
+
+    fn reserve_size(&self) -> usize {
+        // Ed25519 sig (64) + COSE overhead (~50) + VC JSON (varies).
+        // We don't know vc_bytes.len() yet at this point; we use a generous
+        // upper bound and refine it in the prepare function once vc_bytes is known.
+        65_536
+    }
+
+    fn sign(
+        &self,
+        signer_payload: &c2pa::identity::SignerPayload,
+    ) -> Result<Vec<u8>, c2pa::identity::builder::IdentityBuilderError> {
+        let vc_bytes = build_ica_vc_bytes(signer_payload, &self.issuer_did, &self.verified_identities)?;
+
+        let mut protected_header = Header::default();
+        protected_header.alg = Some(RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA));
+        protected_header.content_type = Some(coset::ContentType::Text("application/vc".to_string()));
+
+        let captured = Arc::clone(&self.captured);
+        let vc_bytes_clone = vc_bytes.clone();
+        let sign1 = CoseSign1Builder::new()
+            .protected(protected_header)
+            .payload(vc_bytes)
+            .create_signature(b"", move |to_sign| {
+                if let Ok(mut lock) = captured.lock() {
+                    lock.to_sign = Some(to_sign.to_vec());
+                    lock.vc_bytes = Some(vc_bytes_clone.clone());
+                }
+                vec![0u8]
+            })
+            .build();
+
+        sign1
+            .to_tagged_vec()
+            .map_err(|e| c2pa::identity::builder::IdentityBuilderError::SignerError(e.to_string()))
+    }
+}
+
+struct FinalizeIcaCredentialHolder {
+    vc_bytes: Vec<u8>,
+    signature: Vec<u8>,
+    reserve_size: usize,
+}
+
+impl c2pa::identity::builder::CredentialHolder for FinalizeIcaCredentialHolder {
+    fn sig_type(&self) -> &'static str {
+        "cawg.identity_claims_aggregation"
+    }
+
+    fn reserve_size(&self) -> usize {
+        self.reserve_size
+    }
+
+    fn sign(
+        &self,
+        _signer_payload: &c2pa::identity::SignerPayload,
+    ) -> Result<Vec<u8>, c2pa::identity::builder::IdentityBuilderError> {
+        let mut protected_header = Header::default();
+        protected_header.alg = Some(RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA));
+        protected_header.content_type = Some(coset::ContentType::Text("application/vc".to_string()));
+
+        let sig = self.signature.clone();
+        let sign1 = CoseSign1Builder::new()
+            .protected(protected_header)
+            .payload(self.vc_bytes.clone())
+            .create_signature(b"", move |_to_sign| sig.clone())
             .build();
 
         sign1
@@ -1115,6 +1229,117 @@ pub async fn finalize_identity_assertion(
         sig_type: state.options.sig_type.clone(),
         reserve_size: state.options.reserve_size,
         signature,
+    };
+
+    build_identity_sign_result(
+        state.format,
+        state.asset.into_vec(),
+        state.manifest_definition,
+        state.signcert.into_vec(),
+        state.pkey.into_vec(),
+        state.alg,
+        state.tsa_url,
+        &state.options,
+        holder,
+        false,
+    )
+}
+
+#[wasm_bindgen]
+pub async fn prepare_ica_identity_assertion(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    issuer_did: String,
+    verified_identities: JsValue,
+    options: JsValue,
+    tsa_url: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let mut manifest_definition_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(manifest_definition)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    stabilize_manifest_definition(&mut manifest_definition_json);
+
+    let options: IdentityAssertionOptions = serde_wasm_bindgen::from_value(options)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let verified_identities_json: serde_json::Value =
+        serde_wasm_bindgen::from_value(verified_identities)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let captured = Arc::new(Mutex::new(CapturedIcaToSign::default()));
+    let holder = PrepareIcaCredentialHolder {
+        issuer_did: issuer_did.clone(),
+        verified_identities: verified_identities_json,
+        captured: Arc::clone(&captured),
+    };
+
+    build_identity_sign_result(
+        format,
+        asset.clone(),
+        manifest_definition_json.clone(),
+        signcert.clone(),
+        pkey.clone(),
+        alg,
+        tsa_url.clone(),
+        &options,
+        holder,
+        false,
+    )?;
+
+    let captured = captured
+        .lock()
+        .map_err(|_| JsValue::from_str("ICA state lock poisoned"))?;
+
+    let to_sign = captured
+        .to_sign
+        .clone()
+        .ok_or_else(|| JsValue::from_str("failed to capture ICA to_sign bytes"))?;
+    let vc_bytes = captured
+        .vc_bytes
+        .clone()
+        .ok_or_else(|| JsValue::from_str("failed to capture ICA vc_bytes"))?;
+
+    // Use the actual vc_bytes size + COSE/CAWG wrapper overhead as the reserve_size
+    // so the finalize pass allocates enough space. The overhead is typically ~300 bytes
+    // (COSE tag, protected header, unprotected map, bstr lengths, CAWG assertion wrap).
+    let computed_reserve_size = vc_bytes.len() + 512;
+    let mut finalize_options = options.clone();
+    finalize_options.reserve_size = computed_reserve_size;
+
+    let state = PreparedIcaIdentityAssertionState {
+        format,
+        asset: asset.into(),
+        manifest_definition: manifest_definition_json,
+        signcert: signcert.into(),
+        pkey: pkey.into(),
+        alg,
+        tsa_url,
+        options: finalize_options,
+        issuer_did,
+        vc_bytes: vc_bytes.into(),
+        to_sign: to_sign.into(),
+    };
+
+    serialize_state_to_js(&state)
+}
+
+#[wasm_bindgen]
+pub async fn finalize_ica_identity_assertion(
+    prepared_state: JsValue,
+    signature: Vec<u8>,
+) -> Result<C2PASignResult, JsValue> {
+    let state: PreparedIcaIdentityAssertionState =
+        serde_wasm_bindgen::from_value(prepared_state)
+            .map_err(|e| JsValue::from_str(&format!("failed to deserialize ICA prepared state: {e}")))?;
+
+    let holder = FinalizeIcaCredentialHolder {
+        vc_bytes: state.vc_bytes.into_vec(),
+        signature,
+        reserve_size: state.options.reserve_size,
     };
 
     build_identity_sign_result(

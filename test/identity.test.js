@@ -7,6 +7,8 @@ import {
   signIdentityAssertionPayloadX509,
   signAsset,
   computeIcaIssuerDid,
+  prepareIcaIdentityAssertion,
+  finalizeIcaIdentityAssertion,
   verifyAsset,
   verifyIdentityAssertions,
 } from '../src/index';
@@ -306,4 +308,75 @@ test('assertion_salt: signing and verification succeeds with a fixed salt', asyn
 
   const outcome = await verifyAsset('image/png', result.signedAsset, [certPem]);
   expect(outcome.manifests.length).toBeGreaterThan(0);
+});
+
+test('prepareIcaIdentityAssertion + finalizeIcaIdentityAssertion round-trip matches direct ICA signing', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
+
+  // Ed25519 key — 32-byte seed (same key used in the in-process ICA signing tests)
+  const issuerSeed = new Uint8Array(32).fill(0x42);
+  const issuerDid = computeIcaIssuerDid(issuerSeed);
+
+  const verifiedIdentities = [{
+    type: 'cawg.social_media',
+    username: 'testuser',
+    uri: 'https://social.example.com/testuser',
+    verifiedAt: '2024-01-01T00:00:00Z',
+    provider: { id: 'https://social.example.com', name: 'Test Social' },
+  }];
+
+  const icaOptions = {
+    sigType: 'cawg.identity_claims_aggregation',
+    reserveSize: 8192,
+    roles: ['cawg.creator'],
+  };
+
+  // Two-step external signing flow
+  const prepared = await prepareIcaIdentityAssertion({
+    format: 'image/jpeg',
+    asset: assetData,
+    manifestDefinition: makeManifest('tabby.jpg'),
+    signcert, pkey, alg: 'es256',
+    issuerDid, verifiedIdentities, icaOptions,
+  });
+
+  expect(prepared.toSign).toBeDefined();
+  expect(prepared.toSign.length).toBeGreaterThan(0);
+  expect(prepared.vcBytes).toBeDefined();
+  expect(prepared.issuerDid).toBe(issuerDid);
+
+  // Sign the captured to_sign bytes using Node's crypto module.
+  // Node doesn't accept raw Ed25519 seeds — wrap the 32-byte seed in a minimal
+  // PKCS#8 DER envelope (1.3.101.112 = Ed25519 OID) then import it.
+  const { createPrivateKey, sign: nodeCryptoSign } = await import('crypto');
+  const pkcs8Prefix = Buffer.from([
+    0x30, 0x2e,             // SEQUENCE (46 bytes)
+    0x02, 0x01, 0x00,       // INTEGER version=0
+    0x30, 0x05,             // SEQUENCE
+      0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112 (Ed25519)
+    0x04, 0x22,             // OCTET STRING (34 bytes)
+      0x04, 0x20,           // OCTET STRING (32 bytes = the seed)
+  ]);
+  const pkcs8Der = Buffer.concat([pkcs8Prefix, Buffer.from(issuerSeed)]);
+  const privateKey = createPrivateKey({ key: pkcs8Der, format: 'der', type: 'pkcs8' });
+  // crypto.sign(null, data, keyObject) returns a 64-byte raw R||S Ed25519 signature.
+  const signature = new Uint8Array(nodeCryptoSign(null, Buffer.from(prepared.toSign), privateKey));
+
+  const result = await finalizeIcaIdentityAssertion(prepared, signature);
+  expect(result.signedAsset).toBeDefined();
+  expect(result.signedAsset.length).toBeGreaterThan(0);
+
+  // Verify the outer C2PA claim
+  const outcome = await verifyAsset('image/jpeg', result.signedAsset, [certPem]);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+
+  // Verify the ICA identity assertion
+  const idOutcome = await verifyIdentityAssertions('image/jpeg', result.signedAsset, [certPem]);
+  const firstManifestId = Object.keys(idOutcome.manifests)[0];
+  expect(firstManifestId).toBeDefined();
+  const assertions = idOutcome.manifests[firstManifestId];
+  const icaAssertion = assertions.find(a => a.label && a.label.startsWith('cawg.identity'));
+  expect(icaAssertion).toBeDefined();
+  expect(icaAssertion.validated).toBe(true);
 });

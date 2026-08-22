@@ -52,6 +52,29 @@ export type PreparedIdentityAssertion = {
   signerPayload: Record<string, unknown>;
   signerPayloadCbor: Uint8Array;
 };
+
+/**
+ * Opaque state returned by `prepareIcaIdentityAssertion`. Pass it directly to
+ * `finalizeIcaIdentityAssertion` after signing `toSign` externally.
+ *
+ * `toSign` — the exact bytes the external Ed25519 signer must sign (64-byte raw
+ * signature, RFC 8032 R||S format). These are the COSE Sig_Structure bytes that
+ * coset computes from the protected header and VC JSON payload. Sign them with
+ * whatever holds your Ed25519 key (WebAuthn PRF-derived key, HSM, KMS, etc.).
+ */
+export type PreparedIcaIdentityAssertion = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array;
+  manifestDefinition: unknown;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  tsaUrl?: string;
+  options: IdentityAssertionOptions;
+  issuerDid: string;
+  vcBytes: Uint8Array;
+  toSign: Uint8Array;
+};
 export type IdentityAssertionRecord = {
   label: string;
   validated: boolean;
@@ -500,6 +523,70 @@ export function signIdentityAssertionPayloadX509(
 
 export function computeIcaIssuerDid(privateKey: Uint8Array): string {
   return wasm.compute_ica_issuer_did(privateKey);
+}
+
+/**
+ * Two-step ICA signing — prepare phase.
+ *
+ * Builds the full W3C Verifiable Credential and COSE_Sign1 structure, captures
+ * the bytes the external Ed25519 key must sign, and returns them as `toSign`.
+ * No private key is required for this call — `signcert`/`pkey` sign the outer
+ * C2PA claim only; the ICA credential is left with a placeholder.
+ *
+ * @returns `PreparedIcaIdentityAssertion` containing `toSign` — pass the signed
+ *   64-byte raw Ed25519 signature (RFC 8032) to `finalizeIcaIdentityAssertion`.
+ *
+ * @example
+ * // Browser-side with @noble/curves or WebCrypto SubtleCrypto
+ * const prepared = await prepareIcaIdentityAssertion({
+ *   format: 'image/jpeg', asset, manifestDefinition, signcert, pkey, alg: 'es256',
+ *   issuerDid, verifiedIdentities, icaOptions: { sigType: 'cawg.identity_claims_aggregation', reserveSize: 8192, roles: ['cawg.creator'] },
+ * });
+ * const signature = ed25519.sign(prepared.toSign, issuerPrivateKey); // 64-byte raw sig
+ * const result = await finalizeIcaIdentityAssertion(prepared, signature);
+ */
+export async function prepareIcaIdentityAssertion(options: {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array | string;
+  manifestDefinition: Record<string, unknown>;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  issuerDid: string;
+  verifiedIdentities: IcaVerifiedIdentity[];
+  icaOptions: IdentityAssertionOptions;
+  tsaUrl?: string;
+}): Promise<PreparedIcaIdentityAssertion> {
+  const { format, manifestDefinition, signcert, pkey, alg, issuerDid, verifiedIdentities, icaOptions, tsaUrl } = options;
+  const asset = prepareAsset(format, options.asset);
+  return wasm.prepare_ica_identity_assertion(
+    format, asset, manifestDefinition, signcert, pkey, alg,
+    issuerDid, verifiedIdentities,
+    {
+      sigType: icaOptions.sigType,
+      reserveSize: icaOptions.reserveSize,
+      referencedAssertions: icaOptions.referencedAssertions ?? [],
+      roles: icaOptions.roles ?? [],
+    },
+    tsaUrl
+  ) as Promise<PreparedIcaIdentityAssertion>;
+}
+
+/**
+ * Two-step ICA signing — finalize phase.
+ *
+ * Takes the prepared state from `prepareIcaIdentityAssertion` and the 64-byte
+ * raw Ed25519 signature over `prepared.toSign`, rebuilds the COSE_Sign1 with the
+ * real signature, and produces the final signed asset.
+ *
+ * @param prepared — the value returned by `prepareIcaIdentityAssertion`
+ * @param signature — 64-byte raw Ed25519 signature (RFC 8032, R||S) over `prepared.toSign`
+ */
+export async function finalizeIcaIdentityAssertion(
+  prepared: PreparedIcaIdentityAssertion,
+  signature: Uint8Array
+): Promise<wasm.C2PASignResult> {
+  return wasm.finalize_ica_identity_assertion(prepared, signature);
 }
 
 export function addCawgMetadataAssertion(
