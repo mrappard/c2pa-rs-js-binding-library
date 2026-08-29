@@ -182,6 +182,25 @@ impl From<SigningAlg> for c2pa::SigningAlg {
     }
 }
 
+/// One TRQP-checkable trust-registry claim to embed in an ICA identity
+/// assertion's `credentialSubject.c2paAsset.trust_registry` array. JS/TS
+/// callers supply these camelCase (matching every other field on
+/// `IdentityAssertionOptions`); `build_ica_vc_bytes` re-emits each one as
+/// snake_case in the VC JSON, matching `sig_type`/`referenced_assertions`
+/// and the wider CAWG credential field-naming convention.
+#[derive(Clone, Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+#[tsify(from_wasm_abi)]
+pub struct TrustRegistryClaim {
+    pub trqp_authorization_uri: String,
+    pub entity_id: String,
+    pub authority_id: String,
+    pub action: String,
+    pub resource: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<serde_json::Value>,
+}
+
 #[derive(Clone, Serialize, Deserialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 #[tsify(from_wasm_abi)]
@@ -192,6 +211,12 @@ pub struct IdentityAssertionOptions {
     pub referenced_assertions: Vec<String>,
     #[serde(default)]
     pub roles: Vec<String>,
+    /// Zero or more trust-registry claims to embed alongside this identity
+    /// assertion — e.g. a signed Governorator TRQP enrollment. A profile can
+    /// hold enrollments from more than one authority at once, so this is
+    /// array-shaped rather than a single claim.
+    #[serde(default)]
+    pub trust_registry: Vec<TrustRegistryClaim>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -338,6 +363,12 @@ fn build_ica_vc_bytes(
             .as_object_mut()
             .unwrap()
             .insert("role".to_string(), serde_json::json!(signer_payload.roles));
+    }
+    if !signer_payload.trust_registry.is_empty() {
+        c2pa_asset.as_object_mut().unwrap().insert(
+            "trust_registry".to_string(),
+            serde_json::json!(signer_payload.trust_registry),
+        );
     }
 
     let valid_from = Utc::now().to_rfc3339();
@@ -590,6 +621,22 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
     if !options.roles.is_empty() {
         let roles: Vec<&str> = options.roles.iter().map(String::as_str).collect();
         identity_builder.add_roles(&roles);
+    }
+
+    if !options.trust_registry.is_empty() {
+        let claims: Vec<c2pa::identity::TrustRegistryClaim> = options
+            .trust_registry
+            .iter()
+            .map(|claim| c2pa::identity::TrustRegistryClaim {
+                trqp_authorization_uri: claim.trqp_authorization_uri.clone(),
+                entity_id: claim.entity_id.clone(),
+                authority_id: claim.authority_id.clone(),
+                action: claim.action.clone(),
+                resource: claim.resource.clone(),
+                context: claim.context.clone(),
+            })
+            .collect();
+        identity_builder.add_trust_registry_claims(&claims);
     }
 
     signer.add_identity_assertion(identity_builder);
@@ -1305,8 +1352,12 @@ pub async fn prepare_ica_identity_assertion(
 
     // Use the actual vc_bytes size + COSE/CAWG wrapper overhead as the reserve_size
     // so the finalize pass allocates enough space. The overhead is typically ~300 bytes
-    // (COSE tag, protected header, unprotected map, bstr lengths, CAWG assertion wrap).
-    let computed_reserve_size = vc_bytes.len() + 512;
+    // (COSE tag, protected header, unprotected map, bstr lengths, CAWG assertion wrap),
+    // plus up to ~64 bytes for the real signature replacing the 1-byte placeholder used
+    // during this prepare pass. 512 measured too tight for larger credentials (e.g.
+    // several trust_registry claims) — "Serialized assertion is N bytes, exceeds the
+    // planned size" — so this uses a larger fixed margin.
+    let computed_reserve_size = vc_bytes.len() + 1024;
     let mut finalize_options = options.clone();
     finalize_options.reserve_size = computed_reserve_size;
 

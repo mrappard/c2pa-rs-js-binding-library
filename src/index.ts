@@ -22,11 +22,27 @@ export type CawgMetadataAssertion = {
   '@context': CawgMetadataContext;
   [key: string]: unknown;
 };
+/**
+ * One TRQP-checkable trust-registry claim to embed alongside an ICA
+ * identity assertion (credentialSubject.c2paAsset.trust_registry — array-
+ * shaped since a signer can hold enrollments from more than one authority
+ * at once). X.509-path identity assertions don't currently emit this.
+ */
+export type TrustRegistryClaim = {
+  trqpAuthorizationUri: string;
+  entityId: string;
+  authorityId: string;
+  action: string;
+  resource: string;
+  context?: Record<string, unknown>;
+};
 export type IdentityAssertionOptions = {
   sigType: string;
   reserveSize: number;
   referencedAssertions?: string[];
   roles?: string[];
+  /** ICA path only — see TrustRegistryClaim. */
+  trustRegistry?: TrustRegistryClaim[];
 };
 export type IcaVerifiedIdentity = {
   type: string;
@@ -374,6 +390,7 @@ export async function signAssetSidecar(options: SignAssetSidecarOptions): Promis
         reserveSize: options.icaOptions.reserveSize,
         referencedAssertions: options.icaOptions.referencedAssertions ?? [],
         roles: options.icaOptions.roles ?? [],
+        trustRegistry: options.icaOptions.trustRegistry ?? [],
       },
       tsaUrl
     );
@@ -462,6 +479,7 @@ export async function signAsset(options: SignAssetOptions): Promise<wasm.C2PASig
         reserveSize: options.icaOptions.reserveSize,
         referencedAssertions: options.icaOptions.referencedAssertions ?? [],
         roles: options.icaOptions.roles ?? [],
+        trustRegistry: options.icaOptions.trustRegistry ?? [],
       },
       tsaUrl
     );
@@ -567,6 +585,7 @@ export async function prepareIcaIdentityAssertion(options: {
       reserveSize: icaOptions.reserveSize,
       referencedAssertions: icaOptions.referencedAssertions ?? [],
       roles: icaOptions.roles ?? [],
+      trustRegistry: icaOptions.trustRegistry ?? [],
     },
     tsaUrl
   ) as Promise<PreparedIcaIdentityAssertion>;
