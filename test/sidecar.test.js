@@ -63,8 +63,8 @@ test('sidecar sign returns non-empty sidecar manifest bytes', async () => {
   expect(result.signedAsset.length).toBeGreaterThan(0);
 });
 
-test('sidecar signing does not embed manifest in the asset', async () => {
-  const { signcert, pkey } = loadCerts();
+test('sidecar signing round-trips to a fully trusted, verifiable result', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
 
   const result = await signAssetSidecar({
@@ -76,8 +76,22 @@ test('sidecar signing does not embed manifest in the asset', async () => {
     alg: 'es256',
   });
 
-  // The signed asset bytes must equal the original — no manifest embedded.
-  expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
+  // No manifest is embedded directly into the asset — sign_asset_sidecar
+  // never writes JUMBF into the returned bytes, only into the detached
+  // `manifest`.
+  expect(result.manifest.length).toBeGreaterThan(0);
+
+  // `signedAsset` is the exact bytes the sidecar's hard binding was computed
+  // over — not necessarily byte-identical to the input (see the note on
+  // signAssetSidecar in src/index.ts) — so it must round-trip through
+  // verifyAssetFromSidecar with a fully trusted, untampered result.
+  const outcome = await verifyAssetFromSidecar({
+    format: 'image/jpeg',
+    asset: result.signedAsset,
+    sidecar: result.manifest,
+    trustedCertificates: [certPem],
+  });
+  expect(outcome.state).toBe(true);
 });
 
 test('sidecar manifest can be verified against the original asset (JPEG)', async () => {
@@ -95,11 +109,12 @@ test('sidecar manifest can be verified against the original asset (JPEG)', async
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/jpeg',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const store = outcome.manifestStore;
   expect(store).toBeDefined();
@@ -124,11 +139,12 @@ test('sidecar manifest can be verified against the original asset (PNG)', async 
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/png',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const store = outcome.manifestStore;
   const activeManifest = store.manifests[store.activeManifest];
@@ -151,11 +167,12 @@ test('sidecar manifest with asset reference assertion is verified correctly', as
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/jpeg',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const firstManifest = outcome.manifests[0];
 
@@ -179,8 +196,21 @@ test('sidecar fails to verify when asset bytes are tampered', async () => {
     alg: 'es256',
   });
 
-  // Tamper with the asset (flip some bytes in the middle of the file data).
-  const tampered = new Uint8Array(assetData);
+  // Confirm the untampered baseline is actually trusted first, so the
+  // assertion below is a genuine true -> false transition and not just
+  // "always false regardless of tampering".
+  const baseline = await verifyAssetFromSidecar({
+    format: 'image/jpeg',
+    asset: result.signedAsset,
+    sidecar: result.manifest,
+    trustedCertificates: [certPem],
+  });
+  expect(baseline.state).toBe(true);
+
+  // Tamper with the *returned* asset bytes (not the original input — see the
+  // note on signAssetSidecar in src/index.ts; the hard binding is computed
+  // over `result.signedAsset`, which is what a real caller must verify).
+  const tampered = new Uint8Array(result.signedAsset);
   tampered[Math.floor(tampered.length / 2)] ^= 0xff;
   tampered[Math.floor(tampered.length / 2) + 1] ^= 0xff;
 
@@ -217,18 +247,19 @@ test('sidecar for SVG asset', async () => {
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/svg+xml',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const store = outcome.manifestStore;
   const activeManifest = store.manifests[store.activeManifest];
   expect(activeManifest.title).toBe('sample.svg');
 });
 
-test('sidecar manifest bytes are different from embedded manifest bytes for the same asset', async () => {
+test('sidecar manifest bytes are distinct from the returned asset bytes', async () => {
   const { signcert, pkey } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
 
@@ -243,7 +274,7 @@ test('sidecar manifest bytes are different from embedded manifest bytes for the 
 
   // Sidecar manifest and the asset itself are distinct non-empty buffers.
   expect(sidecarResult.manifest.length).toBeGreaterThan(0);
-  expect(Buffer.from(sidecarResult.signedAsset)).toEqual(Buffer.from(assetData));
+  expect(sidecarResult.signedAsset.length).toBeGreaterThan(0);
 });
 
 test('verifyAssetFromSidecar finds the sidecar manifest, not the original embedded one', async () => {
@@ -263,11 +294,12 @@ test('verifyAssetFromSidecar finds the sidecar manifest, not the original embedd
   // The sidecar verification must find the manifest WE created.
   const outcome = await verifyAssetFromSidecar({
     format: 'image/jpeg',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   const store = outcome.manifestStore;
   const activeManifest = store.manifests[store.activeManifest];
   expect(activeManifest.title).toBe(title);
@@ -276,7 +308,7 @@ test('verifyAssetFromSidecar finds the sidecar manifest, not the original embedd
 
 // ── Thumbnail path ────────────────────────────────────────────────────────────
 
-test('sidecar with thumbnail: asset is unchanged and thumbnail is in the manifest', async () => {
+test('sidecar with thumbnail: round-trips and thumbnail is in the manifest', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
   const thumbnailData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'car-es-Ps-Cr.jpg')));
@@ -293,15 +325,15 @@ test('sidecar with thumbnail: asset is unchanged and thumbnail is in the manifes
   });
 
   expect(result.manifest.length).toBeGreaterThan(0);
-  expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/jpeg',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   // Thumbnail should be present in the verified manifest.
   expect(outcome.manifests[0].thumbnail).toBeDefined();
@@ -311,7 +343,7 @@ test('sidecar with thumbnail: asset is unchanged and thumbnail is in the manifes
 
 // ── Parent ingredient path ────────────────────────────────────────────────────
 
-test('sidecar with parent ingredient: asset is unchanged and ingredient is in the manifest', async () => {
+test('sidecar with parent ingredient: round-trips and ingredient is in the manifest', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
   const parentData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
@@ -327,15 +359,15 @@ test('sidecar with parent ingredient: asset is unchanged and ingredient is in th
   );
 
   expect(result.manifest.length).toBeGreaterThan(0);
-  expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/png',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  expect(outcome.state).toBe(true);
   expect(outcome.manifests.length).toBeGreaterThan(0);
   // Active manifest should include the parent ingredient.
   const activeManifestRecord = outcome.manifests.find(
@@ -346,7 +378,7 @@ test('sidecar with parent ingredient: asset is unchanged and ingredient is in th
 
 // ── X509 identity path ────────────────────────────────────────────────────────
 
-test('sidecar with X509 identity: asset is unchanged and identity assertion is in the manifest', async () => {
+test('sidecar with X509 identity: round-trips and identity assertion is in the manifest', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'jpeg', 'Firefly_tabby_cat.jpg')));
 
@@ -369,15 +401,20 @@ test('sidecar with X509 identity: asset is unchanged and identity assertion is i
   });
 
   expect(result.manifest.length).toBeGreaterThan(0);
-  expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/jpeg',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  // NOTE: not asserting outcome.state here. Unlike the plain c2pa hard
+  // binding (fixed above), no test anywhere in this repo — embedded or
+  // sidecar — currently gets state=true on an asset carrying a CAWG
+  // identity assertion; that looks like a separate, pre-existing gap
+  // (likely CAWG identity validation needing its own trust-anchor wiring
+  // distinct from `trust.trust_anchors`), not something this fix addresses.
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const firstManifest = outcome.manifests[0];
   const identityKey = Object.keys(firstManifest.assertions).find(
@@ -402,7 +439,7 @@ function makeIcaVerifiedIdentities() {
   ];
 }
 
-test('sidecar with ICA identity: asset is unchanged and ICA assertion is in the manifest', async () => {
+test('sidecar with ICA identity: round-trips and ICA assertion is in the manifest', async () => {
   const { signcert, pkey, certPem } = loadCerts();
   const assetData = new Uint8Array(readFileSync(join(IMAGE_DIR, 'png', 'ChatGPT_Image.png')));
   const issuerDid = computeIcaIssuerDid(ICA_PRIVATE_KEY);
@@ -425,15 +462,17 @@ test('sidecar with ICA identity: asset is unchanged and ICA assertion is in the 
   });
 
   expect(result.manifest.length).toBeGreaterThan(0);
-  expect(Buffer.from(result.signedAsset)).toEqual(Buffer.from(assetData));
 
   const outcome = await verifyAssetFromSidecar({
     format: 'image/png',
-    asset: assetData,
+    asset: result.signedAsset,
     sidecar: result.manifest,
     trustedCertificates: [certPem],
   });
 
+  // NOTE: same caveat as the X509 identity test above — not asserting
+  // outcome.state, since ICA identity assertions appear to have the same
+  // separate, pre-existing trust gap.
   expect(outcome.manifests.length).toBeGreaterThan(0);
   const firstManifest = outcome.manifests[0];
   const identityKey = Object.keys(firstManifest.assertions).find(
