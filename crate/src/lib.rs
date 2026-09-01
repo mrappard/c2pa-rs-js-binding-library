@@ -641,7 +641,6 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
 
     signer.add_identity_assertion(identity_builder);
 
-    let original = if no_embed { asset.clone() } else { Vec::new() };
     let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
@@ -649,8 +648,12 @@ fn build_identity_sign_result<CH: c2pa::identity::builder::CredentialHolder + Se
         .sign(&signer, format.into(), &mut source, &mut dest)
         .map_err(|err| JsValue::from_str(&err.to_string()))?;
 
+    // See the comment in `sign_asset_sidecar`: `dest` holds the bytes the hash
+    // was actually computed over, whether or not `no_embed` was set — return
+    // that, not the untouched input, so no_embed callers can validate the
+    // resulting sidecar against `verify_asset_from_sidecar`.
     Ok(C2PASignResult {
-        signed_asset: if no_embed { original } else { dest.into_inner() },
+        signed_asset: dest.into_inner(),
         manifest,
     })
 }
@@ -865,15 +868,21 @@ pub async fn sign_asset_sidecar_with_ingredients(
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut source = Cursor::new(asset.clone());
+    let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
     let sidecar = builder
         .sign(signer.as_ref(), format.into(), &mut source, &mut dest)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
+    // The hash.data assertion in `sidecar` is computed over whatever `sign()`
+    // actually wrote to `dest` (e.g. after a manifest-removal pass), not
+    // necessarily byte-identical to the original `asset` — return `dest` so
+    // callers hand `verify_asset_from_sidecar` the bytes the hash was really
+    // computed over. Returning the untouched original here previously made
+    // sidecar verification fail unconditionally, independent of tampering.
     Ok(C2PASignResult {
-        signed_asset: asset,
+        signed_asset: dest.into_inner(),
         manifest: sidecar,
     })
 }
@@ -961,8 +970,10 @@ pub async fn sign_asset(
 /// Signs an asset and produces a sidecar manifest file (no manifest embedded in the asset).
 ///
 /// The returned `C2PASignResult.manifest` bytes are the sidecar (`.c2pa`) file.
-/// The returned `C2PASignResult.signedAsset` is the asset unchanged (no embedding occurs).
-/// Use `verify_asset_from_sidecar` to verify the sidecar against the asset.
+/// The returned `C2PASignResult.signedAsset` is the asset bytes the manifest's hard binding
+/// was actually computed over — byte-identical to the input for formats/cases where no
+/// manifest-removal pass is needed, but callers should treat it as the canonical asset to
+/// pass to `verify_asset_from_sidecar` rather than assuming it always equals the input.
 #[wasm_bindgen]
 pub async fn sign_asset_sidecar(
     format: SupportedFormat,
@@ -986,14 +997,14 @@ pub async fn sign_asset_sidecar(
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut source = Cursor::new(asset.clone());
+    let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
     let sidecar = builder.sign(signer.as_ref(), format.into(), &mut source, &mut dest)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     Ok(C2PASignResult {
-        signed_asset: asset,
+        signed_asset: dest.into_inner(),
         manifest: sidecar,
     })
 }
@@ -1028,7 +1039,7 @@ pub async fn sign_asset_sidecar_with_thumbnail(
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut source = Cursor::new(asset.clone());
+    let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
     let sidecar = builder
@@ -1036,7 +1047,7 @@ pub async fn sign_asset_sidecar_with_thumbnail(
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     Ok(C2PASignResult {
-        signed_asset: asset,
+        signed_asset: dest.into_inner(),
         manifest: sidecar,
     })
 }
@@ -1083,7 +1094,7 @@ pub async fn sign_asset_sidecar_with_parent_ingredient(
     let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut source = Cursor::new(asset.clone());
+    let mut source = Cursor::new(asset);
     let mut dest = Cursor::new(Vec::new());
 
     let sidecar = builder
@@ -1091,7 +1102,7 @@ pub async fn sign_asset_sidecar_with_parent_ingredient(
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     Ok(C2PASignResult {
-        signed_asset: asset,
+        signed_asset: dest.into_inner(),
         manifest: sidecar,
     })
 }
