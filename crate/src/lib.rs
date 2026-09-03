@@ -1107,6 +1107,55 @@ pub async fn sign_asset_sidecar_with_parent_ingredient(
     })
 }
 
+/// Signs an asset with a remote manifest reference (no manifest embedded in the asset).
+///
+/// A reference to `remote_url` is embedded in the asset (for text formats, as a
+/// `<!-- -----BEGIN C2PA MANIFEST----- <url> -----END C2PA MANIFEST----- -->` comment;
+/// for other formats, via the format's native remote-reference mechanism, e.g. XMP).
+/// The full manifest is NOT embedded — the returned `C2PASignResult.manifest` bytes are
+/// the sidecar (`.c2pa`) manifest that the caller must host at `remote_url` so verifiers
+/// that fetch remote manifests can resolve it.
+///
+/// The returned `C2PASignResult.signedAsset` is the asset bytes the manifest's hard binding
+/// was actually computed over — treat it as the canonical asset to distribute alongside the
+/// hosted sidecar, the same way `sign_asset_sidecar` callers do.
+#[wasm_bindgen]
+pub async fn sign_asset_remote(
+    format: SupportedFormat,
+    asset: Vec<u8>,
+    manifest_definition: JsValue,
+    signcert: Vec<u8>,
+    pkey: Vec<u8>,
+    alg: SigningAlg,
+    remote_url: String,
+    tsa_url: Option<String>,
+) -> Result<C2PASignResult, JsValue> {
+    let manifest_definition_json: serde_json::Value = serde_wasm_bindgen::from_value(manifest_definition)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let context = Context::new();
+    let mut builder = c2pa::Builder::from_context(context)
+        .with_definition(manifest_definition_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    builder.set_remote_url(remote_url);
+    builder.set_no_embed(true);
+
+    let signer = c2pa::create_signer::from_keys(&signcert, &pkey, alg.into(), tsa_url)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let mut source = Cursor::new(asset);
+    let mut dest = Cursor::new(Vec::new());
+
+    let sidecar = builder.sign(signer.as_ref(), format.into(), &mut source, &mut dest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(C2PASignResult {
+        signed_asset: dest.into_inner(),
+        manifest: sidecar,
+    })
+}
+
 /// Verifies a sidecar manifest against the original asset bytes.
 ///
 /// `sidecar` is the raw JUMBF manifest bytes returned by `sign_asset_sidecar`.
