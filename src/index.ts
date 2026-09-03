@@ -16,6 +16,39 @@ const MD_EMPTY_MANIFEST_BLOCK = `${MD_MANIFEST_PREFIX} data:application/c2pa;bas
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+/**
+ * Structured-text formats whose reader (`StructuredTextIdIO` in the fork) does not itself
+ * fetch remote manifest references — it only decodes `data:` URIs and reports everything
+ * else as `JumbfNotFound`. `verifyAsset` below detects that specific failure for these
+ * formats and fetches the reference itself before retrying as a sidecar.
+ */
+const REMOTE_REF_TEXT_FORMATS = new Set<wasm.SupportedFormat>([
+  MD_FORMAT,
+  XML_FORMAT,
+  JSONC_FORMAT,
+]);
+const MANIFEST_REFERENCE_PATTERN = /-----BEGIN C2PA MANIFEST-----\s*(\S+)\s*-----END C2PA MANIFEST-----/;
+
+function extractRemoteManifestUrl(asset: Uint8Array): string | null {
+  const match = MANIFEST_REFERENCE_PATTERN.exec(textDecoder.decode(asset));
+  const reference = match?.[1];
+  if (!reference || reference.startsWith('data:')) return null;
+  return reference;
+}
+
+async function fetchRemoteManifest(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote manifest from ${url}: ${response.status} ${response.statusText}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function isJumbfNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes('JUMBF');
+}
+
 export type JsoncAssetInput = string | Uint8Array;
 export type CawgMetadataContext = Record<string, string>;
 export type CawgMetadataAssertion = {
@@ -199,7 +232,18 @@ export async function verifyAsset(
   asset: Uint8Array,
   trustedCertificates: string[]
 ): Promise<wasm.VerificationOutcome> {
-  return wasm.verify_asset(format, asset, trustedCertificates);
+  try {
+    return await wasm.verify_asset(format, asset, trustedCertificates);
+  } catch (err) {
+    if (REMOTE_REF_TEXT_FORMATS.has(format) && isJumbfNotFoundError(err)) {
+      const remoteUrl = extractRemoteManifestUrl(asset);
+      if (remoteUrl) {
+        const sidecar = await fetchRemoteManifest(remoteUrl);
+        return wasm.verify_asset_from_sidecar(format, asset, sidecar, trustedCertificates);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
@@ -404,6 +448,32 @@ export async function signAssetSidecar(options: SignAssetSidecarOptions): Promis
   }
 
   return wasm.sign_asset_sidecar(format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl);
+}
+
+export type SignAssetRemoteOptions = {
+  format: wasm.SupportedFormat;
+  asset: Uint8Array | string;
+  manifestDefinition: any;
+  signcert: Uint8Array;
+  pkey: Uint8Array;
+  alg: wasm.SigningAlg;
+  /** URL where the sidecar manifest (`result.manifest`) will be hosted. */
+  remoteUrl: string;
+  tsaUrl?: string;
+};
+
+/**
+ * Signs an asset with a remote manifest reference instead of an embedded manifest.
+ *
+ * The asset is stamped with a reference to `remoteUrl` (for text formats, an HTML-style
+ * comment; for other formats, the format's native remote-reference mechanism) but does not
+ * carry the manifest itself. The caller must host `result.manifest` (the sidecar `.c2pa`
+ * bytes) at `remoteUrl` so verifiers that fetch remote manifests can resolve it.
+ */
+export async function signAssetRemote(options: SignAssetRemoteOptions): Promise<wasm.C2PASignResult> {
+  const { format, manifestDefinition, signcert, pkey, alg, remoteUrl, tsaUrl } = options;
+  const asset = prepareAsset(format, options.asset);
+  return wasm.sign_asset_remote(format, asset, manifestDefinition, signcert, pkey, alg, remoteUrl, tsaUrl);
 }
 
 export type VerifyAssetFromSidecarOptions = {
