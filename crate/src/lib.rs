@@ -80,6 +80,9 @@ pub enum SupportedFormat {
     #[serde(rename = "audio/flac")]
     #[strum(serialize = "audio/flac")]
     Flac,
+    #[serde(rename = "audio/midi")]
+    #[strum(serialize = "audio/midi")]
+    Midi,
 }
 
 #[derive(Serialize, Tsify)]

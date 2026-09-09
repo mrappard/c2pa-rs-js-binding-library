@@ -4,7 +4,7 @@ TypeScript/JavaScript bindings for [C2PA](https://c2pa.org/) (Coalition for Cont
 
 ## What It Does
 
-- **Sign** images, PDFs, SVGs, audio files (MP3, WAV, FLAC), and text formats (JSONC, XML, Markdown) with C2PA manifests
+- **Sign** images, PDFs, SVGs, audio files (MP3, WAV, FLAC), MIDI files, and text formats (JSONC, XML, Markdown) with C2PA manifests
 - **Verify** C2PA manifests and extract provenance data
 - **Sidecar manifests** — produce a separate `.c2pa` file for assets that cannot be modified (AI/ML datasets)
 - **CAWG identity assertions** — prepare, sign, and verify named-actor identity credentials (X.509 and ICA/W3C VC)
@@ -24,6 +24,7 @@ Works in any bundler that supports WASM (Vite, webpack 5, Rollup, esbuild).
 | `audio/mpeg` | MP3 |
 | `audio/wav` | WAV |
 | `audio/flac` | FLAC |
+| `audio/midi` | MIDI (Standard MIDI File) |
 | `jsonc` | JSONC / JSON with comments |
 | `xml` | XML |
 | `md` | Markdown |

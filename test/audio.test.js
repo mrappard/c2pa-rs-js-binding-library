@@ -60,3 +60,16 @@ test('sign and verify a FLAC asset', async () => {
   expect(outcome.manifests.length).toBeGreaterThan(0);
   expect(outcome.state).toBe(true);
 });
+
+test('sign and verify a MIDI asset', async () => {
+  const { signcert, pkey, certPem } = loadCerts();
+  const asset = new Uint8Array(readFileSync(join(AUDIO_DIR, 'sample1.mid')));
+
+  const result = await signAsset({ format: 'audio/midi', asset, manifestDefinition: makeManifest('sample1.mid'), signcert, pkey, alg: 'es256' });
+  expect(result.signedAsset).toBeDefined();
+  expect(result.manifest).toBeDefined();
+
+  const outcome = await verifyAsset('audio/midi', result.signedAsset, [certPem]);
+  expect(outcome.manifests.length).toBeGreaterThan(0);
+  expect(outcome.state).toBe(true);
+});
