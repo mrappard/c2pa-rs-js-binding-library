@@ -361,8 +361,15 @@ export async function signAssetWithIngredients(
   ingredients: IngredientDescriptor[],
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
+  // Structured-text formats (jsonc/md/xml) need a placeholder manifest block already
+  // present in the asset before signing — StructuredTextIdIO's writer patches an
+  // existing block rather than inserting a fresh one. Without this, signing a bare
+  // jsonc/md/xml asset fails with JumbfNotFound. `ingredients[].asset` never needs
+  // this: those are read-only references to already-signed (or embedded-manifest)
+  // assets, not assets being signed here.
+  const preparedAsset = prepareAsset(format, asset);
   return wasm.sign_asset_with_ingredients(
-    format, asset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
+    format, preparedAsset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
   );
 }
 
@@ -376,8 +383,10 @@ export async function signAssetSidecarWithIngredients(
   ingredients: IngredientDescriptor[],
   tsaUrl?: string
 ): Promise<wasm.C2PASignResult> {
+  // See the comment in `signAssetWithIngredients` above — same placeholder requirement.
+  const preparedAsset = prepareAsset(format, asset);
   return wasm.sign_asset_sidecar_with_ingredients(
-    format, asset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
+    format, preparedAsset, manifestDefinition, signcert, pkey, alg, ingredients, tsaUrl
   );
 }
 
@@ -409,7 +418,10 @@ export type SignAssetSidecarOptions = {
 };
 
 export async function signAssetSidecar(options: SignAssetSidecarOptions): Promise<wasm.C2PASignResult> {
-  const { format, asset, manifestDefinition, signcert, pkey, alg, tsaUrl } = options;
+  const { format, manifestDefinition, signcert, pkey, alg, tsaUrl } = options;
+  // See the comment in `signAssetWithIngredients` — structured-text formats need a
+  // placeholder manifest block pre-embedded before signing, on every branch below.
+  const asset = prepareAsset(format, options.asset);
 
   if (options.identitySigncert && options.identityPkey && options.identityAlg && options.identityOptions) {
     return wasm.sign_asset_sidecar_with_x509_identity(
